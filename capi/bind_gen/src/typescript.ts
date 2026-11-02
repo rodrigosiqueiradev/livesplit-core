@@ -705,6 +705,68 @@ export interface DetailedTimerComponentSegmentNameSizeHintJson {
 }
 
 /**
+ * The state of the Custom Comparisons Editor's list of comparisons.
+ */
+export interface CustomComparisonsEditorStateJson {
+    /** The comparisons, in the order they are stored and offered in. */
+    comparisons: CustomComparisonStateJson[],
+}
+
+/**
+ * The state of one comparison in the Custom Comparisons Editor.
+ */
+export interface CustomComparisonStateJson {
+    /**
+     * The comparison's name. For a comparison that can't be read, this is the
+     * best guess.
+     */
+    name: string,
+    /**
+     * Whether the comparison could be read. One that can't be read can't be
+     * renamed or edited, but it can be exported, moved and removed.
+     */
+    readable: boolean,
+    /** Why the comparison doesn't work, or null if it works. */
+    problem: string | null,
+    /**
+     * How many of the other comparisons use this one. They stop working if it's
+     * removed.
+     */
+    used_by: number,
+}
+
+/**
+ * A preview of a custom comparison being edited, for one timing method.
+ */
+export interface CustomComparisonPreviewJson {
+    /** Why the comparison can't be calculated, or null if it can. */
+    error: string | null,
+    /** One entry per segment of the run. */
+    segments: CustomComparisonPreviewSegmentJson[],
+}
+
+/**
+ * The preview of one segment of a custom comparison.
+ */
+export interface CustomComparisonPreviewSegmentJson {
+    /** The name of the segment. */
+    name: string,
+    /** The segment's time in seconds, or null if there is none. */
+    segment_time: number | null,
+    /**
+     * The split time in seconds, or null if there is none. Once a segment is
+     * empty, every later split is empty too.
+     */
+    split_time: number | null,
+    /**
+     * The block the segment's time came from, as the path from the root block
+     * through the file format's keys, like `primary.cases.0.times`. An empty
+     * path is the root block itself. Null if there's no time.
+     */
+    origin: string | null,
+}
+
+/**
  * Represents the current state of the Layout Editor in order to visualize it
  * properly.
  */

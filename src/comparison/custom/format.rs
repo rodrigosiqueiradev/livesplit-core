@@ -88,8 +88,18 @@ type Result<T> = core::result::Result<T, FormatError>;
 
 // ------------------------------------------------------------------ Writing
 
-/// Writes a document as indented JSON.
+/// Writes a document as indented JSON, the way files are exported.
 pub fn write(document: &Document) -> String {
+    serde_json::to_string_pretty(&to_value(document)).expect("A JSON value can always be written")
+}
+
+/// Writes a document as JSON on a single line, the way comparisons are stored
+/// in a layout and copied to the clipboard, so chat apps don't mangle them.
+pub fn write_compact(document: &Document) -> String {
+    serde_json::to_string(&to_value(document)).expect("A JSON value can always be written")
+}
+
+fn to_value(document: &Document) -> Value {
     let mut root = Map::new();
     root.insert("format".into(), FORMAT_ID.into());
     root.insert(
@@ -101,7 +111,7 @@ pub fn write(document: &Document) -> String {
     if let Some(workspace) = &document.workspace {
         root.insert("workspace".into(), workspace.clone());
     }
-    serde_json::to_string_pretty(&Value::Object(root)).expect("A JSON value can always be written")
+    Value::Object(root)
 }
 
 fn typed(type_name: &str) -> Map<String, Value> {
