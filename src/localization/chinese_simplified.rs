@@ -535,6 +535,7 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "空白",
         Text::ComponentCurrentComparison => "当前比较",
         Text::ComponentCurrentPace => "当前配速",
+        Text::ComponentCustomComparisons => "自定义比较",
         Text::ComponentDelta => "差值",
         Text::ComponentDetailedTimer => "详细计时器",
         Text::ComponentGraph => "图表",

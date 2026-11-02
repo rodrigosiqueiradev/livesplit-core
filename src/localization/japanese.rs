@@ -645,6 +645,7 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "余白",
         Text::ComponentCurrentComparison => "現在の比較対象",
         Text::ComponentCurrentPace => "現在のペース",
+        Text::ComponentCustomComparisons => "カスタム比較",
         Text::ComponentDelta => "タイム差",
         Text::ComponentDetailedTimer => "詳細タイマー",
         Text::ComponentGraph => "グラフ",

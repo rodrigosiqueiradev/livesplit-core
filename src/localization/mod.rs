@@ -962,6 +962,7 @@ pub(crate) enum Text {
     ComponentBlankSpace,
     ComponentCurrentComparison,
     ComponentCurrentPace,
+    ComponentCustomComparisons,
     ComponentDelta,
     ComponentDetailedTimer,
     ComponentGraph,

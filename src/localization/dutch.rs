@@ -705,6 +705,7 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "Lege ruimte",
         Text::ComponentCurrentComparison => "Huidige vergelijking",
         Text::ComponentCurrentPace => "Huidige pace",
+        Text::ComponentCustomComparisons => "Aangepaste vergelijkingen",
         Text::ComponentDelta => "Delta",
         Text::ComponentDetailedTimer => "Gedetailleerde timer",
         Text::ComponentGraph => "Grafiek",
