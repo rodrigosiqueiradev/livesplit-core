@@ -10,6 +10,7 @@ pub mod average_segments;
 pub mod balanced_pb;
 pub mod best_segments;
 pub mod best_split_times;
+pub mod custom;
 pub mod goal;
 pub mod latest_run;
 pub mod median_segments;
