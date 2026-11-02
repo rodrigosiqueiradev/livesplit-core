@@ -697,6 +697,7 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "Blank Space",
         Text::ComponentCurrentComparison => "Current Comparison",
         Text::ComponentCurrentPace => "Current Pace",
+        Text::ComponentCustomComparisons => "Custom Comparisons",
         Text::ComponentDelta => "Delta",
         Text::ComponentDetailedTimer => "Detailed Timer",
         Text::ComponentGraph => "Graph",

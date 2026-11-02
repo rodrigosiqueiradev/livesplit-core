@@ -13,7 +13,9 @@ use super::{
     run_data::{AttemptData, RunData, SegmentData},
 };
 use crate::{
-    Run, Segment, TimeSpan, Timer, TimingMethod,
+    Layout, Run, Segment, TimeSpan, Timer, TimingMethod,
+    component::{custom_comparisons, group},
+    layout::ComponentSettings,
     platform::{DateTime, Duration, prelude::*},
     util::tests_helper::run_with_splits,
 };
@@ -909,4 +911,104 @@ fn generator_handles_both_timing_methods() {
         time[TimingMethod::RealTime],
         run.segment(1).personal_best_split_time().real_time
     );
+}
+
+// ------------------------------------------------------------------ Layout
+
+fn program_json(name: &str) -> String {
+    format::write(&Document {
+        program: Program {
+            name: name.into(),
+            root: Times::Comparison {
+                name: "Personal Best".into(),
+            },
+        },
+        workspace: None,
+    })
+}
+
+fn layout_with(comparisons: &[&str]) -> Layout {
+    let component = custom_comparisons::Component::with_settings(custom_comparisons::Settings {
+        comparisons: comparisons.iter().map(|c| c.to_string()).collect(),
+    });
+    let mut group = group::Component::new();
+    group.components.push(component.into());
+    let mut layout = Layout::new();
+    layout.push(group);
+    layout
+}
+
+fn has_comparison(timer: &Timer, name: &str) -> bool {
+    timer.run().comparisons().any(|c| c == name)
+}
+
+#[test]
+fn layout_comparisons_are_installed_and_removed() {
+    let (a, b) = (program_json("A"), program_json("B"));
+    let layout = layout_with(&[&a, &b]);
+    let mut timer = timer_with(Vec::new());
+    run_with_splits(&mut timer, &[10.0, 25.0]);
+
+    assert!(
+        timer
+            .set_custom_comparisons(layout.custom_comparisons())
+            .is_empty()
+    );
+    assert!(has_comparison(&timer, "A") && has_comparison(&timer, "B"));
+    // Calculated right away, not only after the next attempt.
+    assert_eq!(
+        timer.run().segment(1).comparison("A").game_time,
+        Some(TimeSpan::from_seconds(25.0))
+    );
+
+    // Installing again replaces them instead of adding them twice.
+    timer.set_custom_comparisons(layout_with(&[&a]).custom_comparisons());
+    timer.set_current_comparison("A").unwrap();
+    let names: Vec<_> = timer.run().comparisons().filter(|c| *c == "A").collect();
+    assert_eq!(names.len(), 1);
+    assert!(!has_comparison(&timer, "B"));
+
+    // Removing the selected comparison falls back to the Personal Best.
+    timer.set_custom_comparisons(Library::default());
+    assert!(!has_comparison(&timer, "A"));
+    assert_eq!(timer.current_comparison(), "Personal Best");
+    assert!(has_comparison(&timer, "Best Segments"));
+}
+
+#[test]
+fn layout_comparison_named_like_one_in_the_splits_is_left_out() {
+    let mut timer = timer_with(Vec::new());
+    let mut run = timer.run().clone();
+    run.add_custom_comparison("World Record").unwrap();
+    timer.set_run(run).unwrap();
+
+    let layout = layout_with(&[&program_json("World Record"), &program_json("Mine")]);
+    let left_out = timer.set_custom_comparisons(layout.custom_comparisons());
+    assert_eq!(left_out, ["World Record"]);
+    assert!(has_comparison(&timer, "Mine"));
+    let count = timer
+        .run()
+        .comparisons()
+        .filter(|c| *c == "World Record")
+        .count();
+    assert_eq!(count, 1);
+}
+
+#[test]
+fn unreadable_layout_comparison_is_kept_verbatim() {
+    let future = r#"{"format":"livesplit-custom-comparison","version":99,"name":"Future Pace"}"#;
+    let layout = layout_with(&[&program_json("Kept"), future]);
+    let library = layout.custom_comparisons();
+    assert_eq!(library.programs().len(), 1);
+    assert_eq!(library.programs()[0].name, "Kept");
+
+    let json = serde_json::to_string(&layout.settings()).unwrap();
+    let reloaded = Layout::from_settings(serde_json::from_str(&json).unwrap());
+    let ComponentSettings::Group(group) = &reloaded.settings().components[0] else {
+        panic!("expected a group");
+    };
+    let ComponentSettings::CustomComparisons(settings) = &group.components[0] else {
+        panic!("expected the Custom Comparisons component");
+    };
+    assert_eq!(settings.comparisons[1], future);
 }

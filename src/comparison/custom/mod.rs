@@ -54,7 +54,7 @@ use self::{
 };
 use super::{ComparisonGenerator, default_generators, personal_best};
 use crate::{
-    AtomicDateTime, Attempt, Segment, TimeSpan, TimingMethod,
+    AtomicDateTime, Attempt, Run, Segment, TimeSpan, TimingMethod,
     platform::{Arc, DateTime, prelude::*},
 };
 use alloc::collections::{BTreeMap, BTreeSet};
@@ -153,6 +153,30 @@ impl Library {
             .collect()
     }
 
+    /// Replaces the custom comparisons installed on the run with the ones in
+    /// this library and calculates them. A program named like a comparison
+    /// the run already has, like a comparison stored in the splits, isn't
+    /// installed, just like in the desktop LiveSplit. The names of the
+    /// programs left out are returned. Other programs can still use them.
+    pub fn install(self, run: &mut Run) -> Vec<String> {
+        run.comparison_generators_mut()
+            .retain(|g| g.as_custom().is_none());
+
+        let taken: Vec<String> = run.comparisons().map(String::from).collect();
+        let mut left_out = Vec::new();
+        for generator in self.generators() {
+            let name = generator.name();
+            if check_name(name, taken.iter().map(String::as_str)).is_some() {
+                left_out.push(name.to_string());
+            } else {
+                run.comparison_generators_mut().push(generator);
+            }
+        }
+
+        run.regenerate_comparisons();
+        left_out
+    }
+
     /// Names of comparisons the programs use that aren't part of the library
     /// themselves, like the Personal Best or Best Segments.
     fn external_references(&self) -> BTreeSet<String> {
@@ -214,7 +238,8 @@ pub struct CustomComparison {
 }
 
 impl CustomComparison {
-    /// The library this comparison belongs to.
+    /// The library this comparison belongs to. It holds all the custom
+    /// comparisons installed together with this one.
     pub fn library(&self) -> &Library {
         &self.library
     }
@@ -223,6 +248,10 @@ impl CustomComparison {
 impl ComparisonGenerator for CustomComparison {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn as_custom(&self) -> Option<&CustomComparison> {
+        Some(self)
     }
 
     fn generate(&mut self, segments: &mut [Segment], attempts: &[Attempt]) {

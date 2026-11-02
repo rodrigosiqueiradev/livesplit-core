@@ -687,6 +687,7 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "Pusta przestrzeń",
         Text::ComponentCurrentComparison => "Bieżące porównanie",
         Text::ComponentCurrentPace => "Bieżące tempo",
+        Text::ComponentCustomComparisons => "Własne porównania",
         Text::ComponentDelta => "Delta",
         Text::ComponentDetailedTimer => "Szczegółowy timer",
         Text::ComponentGraph => "Wykres",

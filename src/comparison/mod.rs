@@ -62,6 +62,11 @@ pub trait ComparisonGenerator: Debug + Sync + Send + ComparisonGeneratorClone {
     /// provided, in case the comparison generator requires information from the
     /// previous attempts.
     fn generate(&mut self, segments: &mut [Segment], attempts: &[Attempt]);
+    /// Returns the custom comparison if this generator is one. This is how
+    /// the custom comparisons installed on a run can be found again.
+    fn as_custom(&self) -> Option<&custom::CustomComparison> {
+        Option::None
+    }
 }
 
 /// Provides the ability to clone a Comparison Generator, even when it is stored

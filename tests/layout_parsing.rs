@@ -231,6 +231,33 @@ mod parse {
     }
 
     #[test]
+    fn custom_comparisons() {
+        // As saved by the desktop component LiveSplit.CustomComparisons.
+        let component = r#"<Component>
+      <Path>LiveSplit.CustomComparisons.dll</Path>
+      <Settings>
+        <Version>2</Version>
+        <Comparisons>
+          <Comparison>{"format":"livesplit-custom-comparison","version":1,"name":"Fast &amp; Safe","root":{"type":"comparison","name":"Personal Best"}}</Comparison>
+          <Comparison>{"format":"livesplit-custom-comparison","version":99,"name":"Future Pace"}</Comparison>
+        </Comparisons>
+      </Settings>
+    </Component>
+  </Components>"#;
+        let l = livesplit(&layout_files::DARK.replace("</Components>", component));
+        let Some(Component::CustomComparisons(c)) = l.components.last() else {
+            panic!("Custom Comparisons component not found");
+        };
+        let comparisons = &c.settings().comparisons;
+        assert_eq!(comparisons.len(), 2);
+        assert!(comparisons[1].contains(r#""version":99"#));
+
+        let library = l.custom_comparisons();
+        assert_eq!(library.programs().len(), 1);
+        assert_eq!(library.programs()[0].name, "Fast & Safe");
+    }
+
+    #[test]
     fn assert_order_of_default_columns() {
         use livesplit_core::component::splits;
 
