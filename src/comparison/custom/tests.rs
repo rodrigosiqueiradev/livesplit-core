@@ -5,7 +5,7 @@
 //! sure the generator is wired up correctly.
 
 use super::{
-    Library, Program,
+    Editor, Library, Program,
     ast::{AggregateKind, NANOS_PER_SECOND, Nanos, PickKind, RangeCase, Samples, Times},
     check_name,
     evaluator::{ComparisonResult, Evaluator},
@@ -1011,4 +1011,217 @@ fn unreadable_layout_comparison_is_kept_verbatim() {
         panic!("expected the Custom Comparisons component");
     };
     assert_eq!(settings.comparisons[1], future);
+}
+
+// ------------------------------------------------------------------ Editor
+
+fn editor_with(comparisons: &[&str]) -> (Editor, Timer) {
+    let mut timer = timer_with(Vec::new());
+    run_with_splits(&mut timer, &[10.0, 25.0]);
+    let mut run = timer.run().clone();
+    run.add_custom_comparison("World Record").unwrap();
+    timer.set_run(run).unwrap();
+    let editor = Editor::new(comparisons.iter().map(|c| c.to_string()), timer.run());
+    (editor, timer)
+}
+
+fn editor_names(editor: &Editor) -> Vec<String> {
+    (0..editor.len()).map(|i| editor.name(i)).collect()
+}
+
+fn using(name: &str, uses: &str) -> String {
+    format::write_compact(&Document {
+        program: Program {
+            name: name.into(),
+            root: Times::Fallback {
+                primary: cmp(uses),
+                fallback: cmp("Personal Best"),
+            },
+        },
+        workspace: Some(serde_json::json!({
+            "blocks": { "blocks": [{
+                "type": "cc_fallback",
+                "inputs": { "PRIMARY": { "block": {
+                    "type": "cc_comparison",
+                    "fields": { "NAME": uses },
+                }}},
+            }]},
+        })),
+    })
+}
+
+#[test]
+fn editor_adds_comparisons_with_free_names_only() {
+    let (mut editor, _timer) = editor_with(&[]);
+    assert_eq!(editor.add(&program_json("Pace")), Ok(()));
+    assert_eq!(
+        editor.add(&program_json("pace")),
+        Err("There's already a comparison called 'pace'.".into())
+    );
+    assert_eq!(editor.suggest_name("pace"), "pace (2)");
+    assert_eq!(editor.add_as(&program_json("pace"), " Pace (2) "), Ok(()));
+    assert!(editor.add(&program_json("Best Segments")).is_err());
+    // A comparison stored in the splits can't be shadowed.
+    assert_eq!(
+        editor.add(&program_json("World Record")),
+        Err("There's already a comparison called 'World Record'.".into())
+    );
+    assert_eq!(
+        editor.add("nope"),
+        Err("This isn't valid JSON: expected ident at line 1 column 2".into())
+    );
+    assert_eq!(editor_names(&editor), ["Pace", "Pace (2)"]);
+    assert_eq!(editor.check_name("Pace", Some(0)), None);
+    assert!(editor.check_name("Pace", Some(1)).is_some());
+
+    // Stored on a single line, like the desktop component stores them.
+    let stored = editor.close();
+    assert!(stored.iter().all(|s| !s.contains('\n')));
+}
+
+#[test]
+fn editor_rename_updates_the_comparisons_that_use_it() {
+    let unrelated = using("Unrelated", "Best Segments");
+    let (mut editor, _timer) =
+        editor_with(&[&program_json("Base"), &using("User", "base"), &unrelated]);
+    assert_eq!(editor.used_by(0), 1);
+
+    assert_eq!(
+        editor.rename(0, "Personal Best"),
+        Err("'Personal Best' is one of LiveSplit's own comparisons. Pick another name.".into())
+    );
+    assert_eq!(editor.rename(0, " Safe "), Ok(()));
+    assert_eq!(editor_names(&editor), ["Safe", "User", "Unrelated"]);
+    assert_eq!(editor.used_by(0), 1);
+
+    let stored = editor.close();
+    let user = format::read(&stored[1]).unwrap();
+    assert_eq!(
+        user.program.root,
+        Times::Fallback {
+            primary: cmp("Safe"),
+            fallback: cmp("Personal Best"),
+        }
+    );
+    let workspace = user.workspace.unwrap();
+    assert_eq!(
+        workspace["blocks"]["blocks"][0]["inputs"]["PRIMARY"]["block"]["fields"]["NAME"],
+        "Safe"
+    );
+    // Comparisons that don't use it stay exactly as they were.
+    assert_eq!(stored[2], unrelated);
+}
+
+#[test]
+fn editor_keeps_unreadable_comparisons_and_flags_duplicates() {
+    let future = r#"{"format":"livesplit-custom-comparison","version":99,"name":"Future Pace"}"#;
+    let (mut editor, timer) = editor_with(&[future, &program_json("Twin"), &program_json("TWIN")]);
+    assert_eq!(editor_names(&editor), ["Future Pace", "Twin", "TWIN"]);
+    assert_eq!(editor.export(0), future);
+    assert_eq!(
+        editor.rename(0, "Other"),
+        Err("This comparison can't be read, so it can't be renamed.".into())
+    );
+
+    let state = editor.state(timer.run());
+    assert!(!state.comparisons[0].readable);
+    assert!(state.comparisons[1].problem.is_none());
+    assert_eq!(
+        state.comparisons[2].problem.as_deref(),
+        Some("Another comparison is already called 'TWIN'. Rename one of them.")
+    );
+    assert_eq!(editor.library().programs().len(), 1);
+
+    // Once the first one is gone, the second one works again.
+    editor.remove(1);
+    assert!(editor.state(timer.run()).comparisons[1].readable);
+    assert!(editor.move_up(1));
+    assert!(!editor.move_up(0));
+    assert!(!editor.move_down(1));
+    assert_eq!(editor.close()[1], future);
+}
+
+#[test]
+fn editor_state_reports_comparisons_that_dont_work() {
+    let (editor, timer) = editor_with(&[
+        &program_json("Fine"),
+        &using("Broken", "Nowhere"),
+        &using("Fine Too", "Fine"),
+    ]);
+    let state = editor.state(timer.run());
+    assert_eq!(state.comparisons[0].problem, None);
+    assert_eq!(state.comparisons[0].used_by, 1);
+    assert!(
+        state.comparisons[1]
+            .problem
+            .as_deref()
+            .unwrap()
+            .contains("Nowhere")
+    );
+    assert_eq!(state.comparisons[2].problem, None);
+}
+
+#[test]
+fn editor_preview_shows_times_and_where_they_came_from() {
+    let (editor, timer) = editor_with(&[&program_json("Base")]);
+    let preview = editor.preview(
+        &using("Draft", "Base"),
+        None,
+        timer.run(),
+        TimingMethod::GameTime,
+    );
+    assert_eq!(preview.error, None);
+    let segments: Vec<_> = preview
+        .segments
+        .iter()
+        .map(|s| {
+            (
+                s.name.as_str(),
+                s.segment_time,
+                s.split_time,
+                s.origin.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        segments,
+        [
+            ("A", Some(10.0), Some(10.0), Some("primary")),
+            ("B", Some(15.0), Some(25.0), Some("primary")),
+        ]
+    );
+
+    // The draft replaces the comparison it's editing.
+    let draft = using("Base", "Base");
+    let preview = editor.preview(&draft, Some(0), timer.run(), TimingMethod::GameTime);
+    assert!(preview.error.unwrap().contains("Base"));
+
+    let preview = editor.preview("{}", None, timer.run(), TimingMethod::GameTime);
+    assert_eq!(
+        preview.error.as_deref(),
+        Some("This isn't a Custom Comparisons file.")
+    );
+    assert_eq!(preview.segments.len(), 2);
+    assert!(preview.segments.iter().all(|s| s.split_time.is_none()));
+}
+
+#[test]
+fn layout_editor_reads_and_stores_the_selected_components_comparisons() {
+    let mut layout = Layout::new();
+    layout.push(crate::component::blank_space::Component::new());
+    layout.push(custom_comparisons::Component::with_settings(
+        custom_comparisons::Settings {
+            comparisons: vec![program_json("A")],
+        },
+    ));
+    let mut editor = crate::LayoutEditor::new(layout).unwrap();
+    editor.select(0);
+    assert_eq!(editor.custom_comparisons(), None);
+    assert!(!editor.set_custom_comparisons(Vec::new()));
+
+    editor.select(1);
+    assert_eq!(editor.custom_comparisons(), Some(&[program_json("A")][..]));
+    assert!(editor.set_custom_comparisons(vec![program_json("B")]));
+    let layout = editor.close();
+    assert_eq!(layout.custom_comparisons().programs()[0].name, "B");
 }

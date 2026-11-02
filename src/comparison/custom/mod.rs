@@ -35,6 +35,7 @@
 //!   editor through [`preview`].
 
 pub mod ast;
+pub mod editor;
 pub mod evaluator;
 pub mod format;
 pub mod run_data;
@@ -44,6 +45,7 @@ mod tests;
 
 pub use self::{
     ast::Program,
+    editor::Editor,
     evaluator::{ComparisonResult, Evaluator},
     format::{Document, FormatError},
 };
@@ -103,10 +105,18 @@ pub fn check_name<'a>(name: &str, taken: impl IntoIterator<Item = &'a str>) -> O
             "'{trimmed}' is one of LiveSplit's own comparisons. Pick another name."
         ));
     }
-    if taken.into_iter().any(|t| t.trim() == trimmed) {
+    if taken.into_iter().any(|t| same_name(t, trimmed)) {
         return Some(format!("There's already a comparison called '{trimmed}'."));
     }
     None
+}
+
+/// Whether two comparison names are the same. Like the desktop LiveSplit, this
+/// ignores surrounding spaces and case, because two comparisons that only
+/// differ in case can't be told apart in the list of comparisons.
+pub fn same_name(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim(), b.trim());
+    a.eq_ignore_ascii_case(b) || a.to_lowercase() == b.to_lowercase()
 }
 
 /// All the custom comparisons of a run. Names are unique.
@@ -117,12 +127,12 @@ pub struct Library {
 
 impl Library {
     /// Creates a library from programs. Programs whose name is already taken
-    /// by an earlier one are left out.
+    /// by an earlier one (ignoring case) are left out.
     pub fn new(programs: impl IntoIterator<Item = Program>) -> Self {
         let mut seen = BTreeSet::new();
         let programs = programs
             .into_iter()
-            .filter(|p| seen.insert(p.name.clone()))
+            .filter(|p| seen.insert(p.name.trim().to_lowercase()))
             .collect();
         Self { programs }
     }
