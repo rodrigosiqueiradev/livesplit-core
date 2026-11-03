@@ -15,6 +15,7 @@ pub mod goal;
 pub mod latest_run;
 pub mod median_segments;
 pub mod none;
+pub mod plugin;
 pub mod worst_segments;
 
 pub use self::{
@@ -65,6 +66,11 @@ pub trait ComparisonGenerator: Debug + Sync + Send + ComparisonGeneratorClone {
     /// Returns the custom comparison if this generator is one. This is how
     /// the custom comparisons installed on a run can be found again.
     fn as_custom(&self) -> Option<&custom::CustomComparison> {
+        Option::None
+    }
+    /// Returns the plugin comparison if this generator is one. This is how
+    /// the comparisons a plugin installed on a run can be found again.
+    fn as_plugin(&self) -> Option<&plugin::PluginComparison> {
         Option::None
     }
 }
