@@ -230,3 +230,18 @@ fn the_editor_can_rename_comparisons_the_plugin_installed() {
         4
     );
 }
+
+#[test]
+fn comparisons_are_taken_over_from_a_layout() {
+    use livesplit_core::{Layout, comparison::custom::settings, component::custom_comparisons};
+
+    let mut layout = Layout::new();
+    let mut component = custom_comparisons::Component::new();
+    component.settings_mut().comparisons = vec![SAFE_PACE.into(), "broken {".into()];
+    layout.push(component);
+
+    let texts = settings::read(&layout.custom_comparisons_settings()).unwrap();
+    assert_eq!(texts.len(), 2);
+    assert_eq!(format::read(&texts[0]).unwrap().program.name, "Safe Pace");
+    assert_eq!(texts[1], "broken {");
+}
