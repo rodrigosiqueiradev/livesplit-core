@@ -262,7 +262,6 @@ fn to_nanos(time: TimeSpan) -> Nanos {
         .clamp(i128::from(Nanos::MIN), i128::from(Nanos::MAX)) as Nanos
 }
 
-
 /// Takes the snapshot of the run the evaluator works on.
 fn run_data(
     segments: &[Segment],

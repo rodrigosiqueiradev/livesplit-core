@@ -15,9 +15,10 @@
 //! A file is pure data: it can only describe blocks from the fixed set in
 //! [`ast`](super::ast). Other members are ignored.
 //!
-//! Files are written with the *lowest* version that can hold their blocks, so
-//! comparisons that don't use newer blocks still open in older releases. Every
-//! value is validated while reading, and every error names the place it
+//! The version lets a later release add blocks or change the format: a file
+//! with a newer version than this build understands is refused with a message
+//! asking the runner to update, instead of being misread. Every value is
+//! validated while reading, and every error names the place it
 //! happened, like `root.source.count: must be a whole number from 1 to 10000.`,
 //! because these messages are shown to runners who are editing or importing a
 //! comparison.
@@ -32,11 +33,9 @@ use serde_json::{Map, Value};
 /// The `format` value that identifies a custom comparison file.
 pub const FORMAT_ID: &str = "livesplit-custom-comparison";
 
-/// The newest format version this build understands. Version 2 added
-/// percentile, recentDays, stretchToTotal, blend and pick. Version 3 added
-/// trimOutliers, finishedUnder, atLeast and attempt. Version 4 added
-/// reachedSegment, weightedAverage, clamp, round and bestRecentRun.
-pub const CURRENT_VERSION: u32 = 4;
+/// The newest format version this build understands, which is also the
+/// version every file is written with.
+pub const CURRENT_VERSION: u32 = 1;
 
 /// The longest allowed comparison name, in characters.
 pub const MAX_NAME_LENGTH: usize = 64;
@@ -89,7 +88,7 @@ pub fn write_compact(program: &Program) -> String {
 fn to_value(program: &Program) -> Value {
     let mut root = Map::new();
     root.insert("format".into(), FORMAT_ID.into());
-    root.insert("version".into(), required_version(&program.root).into());
+    root.insert("version".into(), CURRENT_VERSION.into());
     root.insert("name".into(), program.name.as_str().into());
     root.insert("root".into(), write_times(&program.root));
     Value::Object(root)
@@ -270,50 +269,6 @@ const fn kind_name(kind: AggregateKind) -> &'static str {
         AggregateKind::Max => "max",
         AggregateKind::Average => "average",
         AggregateKind::Median => "median",
-    }
-}
-
-/// The lowest format version that can hold every block in the tree.
-pub fn required_version(node: &Times) -> u32 {
-    match node {
-        Times::Comparison { .. } => 1,
-        Times::Attempt { .. } => 3,
-        Times::BestRecentRun { .. } => 4,
-        Times::Aggregate { source, .. } => samples_version(source),
-        Times::Percentile { source, .. } => samples_version(source).max(2),
-        Times::WeightedAverage { source, .. } => samples_version(source).max(4),
-        Times::AddTime { source, .. } | Times::Scale { source, .. } => required_version(source),
-        Times::StretchToTotal { source, .. } => required_version(source).max(2),
-        Times::Round { source, .. } => required_version(source).max(4),
-        Times::Blend { from, to, .. } => required_version(from).max(required_version(to)).max(2),
-        Times::Pick { first, second, .. } => {
-            required_version(first).max(required_version(second)).max(2)
-        }
-        Times::Clamp { source, low, high } => required_version(source)
-            .max(required_version(low))
-            .max(required_version(high))
-            .max(4),
-        Times::Fallback { primary, fallback } => {
-            required_version(primary).max(required_version(fallback))
-        }
-        Times::SegmentRange { cases, otherwise } => cases
-            .iter()
-            .map(|c| required_version(&c.times))
-            .fold(required_version(otherwise), u32::max),
-    }
-}
-
-fn samples_version(node: &Samples) -> u32 {
-    match node {
-        Samples::SegmentHistory => 1,
-        Samples::LastN { source, .. } | Samples::CompletedRunsOnly { source } => {
-            samples_version(source)
-        }
-        Samples::RecentDays { source, .. } => samples_version(source).max(2),
-        Samples::TrimOutliers { source, .. }
-        | Samples::FinishedUnder { source, .. }
-        | Samples::AtLeast { source, .. } => samples_version(source).max(3),
-        Samples::ReachedSegment { source, .. } => samples_version(source).max(4),
     }
 }
 

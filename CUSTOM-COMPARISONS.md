@@ -20,7 +20,7 @@ in LiveSplit One's
 6. [The plugin ABI, version 1](#6-the-plugin-abi-version-1)
 7. [Engines](#7-engines)
 8. [The Custom Comparisons plugin](#8-the-custom-comparisons-plugin)
-9. [Settings, the editor and desktop layouts](#9-settings-the-editor-and-desktop-layouts)
+9. [Settings and the editor](#9-settings-and-the-editor)
 10. [C API](#10-c-api)
 11. [LiveSplit One integration](#11-livesplit-one-integration)
 12. [Building and testing](#12-building-and-testing)
@@ -29,21 +29,22 @@ in LiveSplit One's
 ## 1. Overview
 
 A custom comparison is a small program, a tree of blocks from a fixed set,
-that turns the run's history into one time per segment. The format and the
-semantics are those of the desktop LiveSplit component *Custom Comparisons*,
-so a comparison file gives the same times in both.
+that turns the run's history into one time per segment. Runners build them
+in a block editor, keep them as one list, and share them as small JSON
+files.
 
 The pieces, from the bottom up:
 
 ```
 src/comparison/custom/          the language
   ast.rs                        block tree: Program, Times, Samples
-  format.rs                     JSON format, versions 1 to 4, validation
+  format.rs                     JSON format and validation
   evaluator.rs                  evaluates programs against a RunData
   run_data.rs                   timing method specific snapshot of a run
   settings.rs                   {"comparisons": [...]}: the plugin's settings
   editor.rs                     list editor: names, renames, preview, state
-  mod.rs                        Library, CustomComparison generator, preview
+  exports.rs                    what the plugin's describe and generate do
+  mod.rs                        Library, names, preview
 
 src/comparison/plugin/          the generic plugin interface
   abi.rs                        JSON documents that cross the boundary
@@ -53,9 +54,6 @@ src/comparison/plugin/          the generic plugin interface
 
 crates/livesplit-custom-comparisons-plugin/
                                 the Custom Comparisons plugin (wasm32 cdylib)
-
-src/layout/parser/custom_comparisons.rs
-                                reads the comparisons out of a desktop .lsl
 
 capi/src/comparison_plugin.rs   C API: ComparisonPlugin_*
 capi/src/custom_comparisons_editor.rs
@@ -92,31 +90,31 @@ arithmetic exact. For example "stretch to total" puts the rounding leftovers
 on the last segment so the total matches to the nanosecond. Everything is per
 segment; times are summed into split times only at the very end.
 
-| Kind | Variant | JSON `type` | Fields (JSON) | Since |
-| --- | --- | --- | --- | --- |
-| Samples | `SegmentHistory` | `segmentHistory` | | 1 |
-| Samples | `LastN` | `lastN` | `count` 1..10000, `source` | 1 |
-| Samples | `CompletedRunsOnly` | `completedRunsOnly` | `source` | 1 |
-| Samples | `RecentDays` | `recentDays` | `days` 1..36500, `source` | 2 |
-| Samples | `TrimOutliers` | `trimOutliers` | `percent` 0..45, `source` | 3 |
-| Samples | `FinishedUnder` | `finishedUnder` | `totalSeconds` 0.001..360000, `source` | 3 |
-| Samples | `AtLeast` | `atLeast` | `count` 1..10000, `source` | 3 |
-| Samples | `ReachedSegment` | `reachedSegment` | `segment` 1..10000, `source` | 4 |
-| Times | `Comparison` | `comparison` | `name` | 1 |
-| Times | `Attempt` | `attempt` | `number` ≥ 1 | 3 |
-| Times | `BestRecentRun` | `bestRecentRun` | `days` 1..36500 | 4 |
-| Times | `Aggregate` | `aggregate` | `kind` (`min`, `max`, `average`, `median`), `source` (Samples) | 1 |
-| Times | `Percentile` | `percentile` | `percent` 0..100, `source` (Samples) | 2 |
-| Times | `WeightedAverage` | `weightedAverage` | `halfLife` 1..10000, `source` (Samples) | 4 |
-| Times | `AddTime` | `addTime` | `seconds` -3600..3600, `source` | 1 |
-| Times | `Scale` | `scale` | `percent` 1..1000, `source` | 1 |
-| Times | `StretchToTotal` | `stretchToTotal` | `totalSeconds` 0.001..360000, `source` | 2 |
-| Times | `Round` | `round` | `step` 0.001..3600 (seconds), `source` | 4 |
-| Times | `Blend` | `blend` | `percent` 0..100, `from`, `to` | 2 |
-| Times | `Pick` | `pick` | `kind` (`faster`, `slower`), `first`, `second` | 2 |
-| Times | `Clamp` | `clamp` | `source`, `low`, `high` | 4 |
-| Times | `Fallback` | `fallback` | `primary`, `fallback` | 1 |
-| Times | `SegmentRange` | `segmentRange` | `cases` (≤ 100 of `{from, to, times}`), `otherwise` | 1 |
+| Kind | Variant | JSON `type` | Fields (JSON) |
+| --- | --- | --- | --- |
+| Samples | `SegmentHistory` | `segmentHistory` | |
+| Samples | `LastN` | `lastN` | `count` 1..10000, `source` |
+| Samples | `CompletedRunsOnly` | `completedRunsOnly` | `source` |
+| Samples | `RecentDays` | `recentDays` | `days` 1..36500, `source` |
+| Samples | `TrimOutliers` | `trimOutliers` | `percent` 0..45, `source` |
+| Samples | `FinishedUnder` | `finishedUnder` | `totalSeconds` 0.001..360000, `source` |
+| Samples | `AtLeast` | `atLeast` | `count` 1..10000, `source` |
+| Samples | `ReachedSegment` | `reachedSegment` | `segment` 1..10000, `source` |
+| Times | `Comparison` | `comparison` | `name` |
+| Times | `Attempt` | `attempt` | `number` ≥ 1 |
+| Times | `BestRecentRun` | `bestRecentRun` | `days` 1..36500 |
+| Times | `Aggregate` | `aggregate` | `kind` (`min`, `max`, `average`, `median`), `source` (Samples) |
+| Times | `Percentile` | `percentile` | `percent` 0..100, `source` (Samples) |
+| Times | `WeightedAverage` | `weightedAverage` | `halfLife` 1..10000, `source` (Samples) |
+| Times | `AddTime` | `addTime` | `seconds` -3600..3600, `source` |
+| Times | `Scale` | `scale` | `percent` 1..1000, `source` |
+| Times | `StretchToTotal` | `stretchToTotal` | `totalSeconds` 0.001..360000, `source` |
+| Times | `Round` | `round` | `step` 0.001..3600 (seconds), `source` |
+| Times | `Blend` | `blend` | `percent` 0..100, `from`, `to` |
+| Times | `Pick` | `pick` | `kind` (`faster`, `slower`), `first`, `second` |
+| Times | `Clamp` | `clamp` | `source`, `low`, `high` |
+| Times | `Fallback` | `fallback` | `primary`, `fallback` |
+| Times | `SegmentRange` | `segmentRange` | `cases` (≤ 100 of `{from, to, times}`), `otherwise` |
 
 The limits are the constants at the top of `format.rs` (`MAX_COUNT`,
 `MAX_DAYS`, `MAX_TOTAL_SECONDS`, ...).
@@ -145,39 +143,21 @@ One comparison is one JSON document:
       }
     },
     "fallback": { "type": "comparison", "name": "Personal Best" }
-  },
-  "workspace": { }
+  }
 }
 ```
 
 - `format` must be `livesplit-custom-comparison`.
-- `version` is 1 to `CURRENT_VERSION` (4). A newer version is rejected with
-  a message asking the runner to update.
+- `version` is `CURRENT_VERSION` (1). A newer version is rejected with a
+  message asking the runner to update, so a later release can add blocks
+  without an older one misreading its files.
 - `name` is trimmed, non-empty and at most 64 characters.
 - `root` is a `Times` block.
-- `workspace` is the desktop Blockly editor's layout (block positions and
-  so on). It is kept as is in `Document::workspace` and never evaluated.
-  LiveSplit One's editor writes it back only if the blocks didn't change, so
-  the desktop editor can lay out a changed comparison itself.
+- Other members are ignored.
 
-### Versions 1 to 4
-
-The version is not a schema switch: every version is a superset of the one
-before, and the only difference is which block types exist.
-
-| Version | Blocks added |
-| --- | --- |
-| 1 | `segmentHistory`, `lastN`, `completedRunsOnly`, `comparison`, `aggregate`, `addTime`, `scale`, `fallback`, `segmentRange` |
-| 2 | `percentile`, `recentDays`, `stretchToTotal`, `blend`, `pick` |
-| 3 | `trimOutliers`, `finishedUnder`, `atLeast`, `attempt` |
-| 4 | `reachedSegment`, `weightedAverage`, `clamp`, `round`, `bestRecentRun` |
-
-Reading accepts any version up to 4 and doesn't check that a file only uses
-blocks of its declared version. Writing (`format::write`,
-`format::write_compact`) always picks the **lowest** version that holds every
-block (`required_version`), so a comparison that only uses old blocks still
-opens in old desktop releases. Times are written in seconds rounded to
-milliseconds and whole numbers without a fraction, like the desktop.
+Writing (`format::write`, `format::write_compact`) produces the same
+document. Times are written in seconds rounded to milliseconds, and whole
+numbers without a fraction.
 
 ### Errors
 
@@ -190,15 +170,14 @@ root.primary: "lastN" gives a list of times per segment. Put it inside a min, ma
 root.cases[2].to: must not be before "from".
 ```
 
-The messages are shown to runners and match the desktop component word for
-word.
+The messages are shown to runners.
 
 ## 4. The evaluator
 
 `Evaluator` evaluates a set of programs (a `Library`) against a `RunData`:
 one timing method's view of the run (segments with their history by attempt,
 attempts with date and final time, the comparisons the programs refer to,
-and "now"). The rules, shared with the desktop:
+and "now"). The rules:
 
 - **Per segment.** An empty segment stays empty unless a fallback fills it.
   Once a segment is empty, every later split time is empty.
@@ -230,11 +209,9 @@ survivors in attempt order; `percentile` interpolates linearly between ranks;
 faster", so the low limit wins when they cross; `pick` gives ties and an
 empty second side to the first.
 
-`CustomComparison` (in `mod.rs`) is the `ComparisonGenerator` for one program
-when the language runs **inside** livesplit-core. `comparison::custom::preview`
-evaluates a program for the editor without touching the run. Both still
-exist, but applications install custom comparisons through the plugin
-described next.
+Custom comparisons get onto a run only through the plugin described next.
+`comparison::custom::preview` evaluates a program for the editor without
+touching the run.
 
 ## 5. Comparison plugins
 
@@ -390,18 +367,19 @@ reusing livesplit-auto-splitting.
 ## 8. The Custom Comparisons plugin
 
 `crates/livesplit-custom-comparisons-plugin` is a `cdylib` + `rlib` that
-depends on livesplit-core with no default features and reuses the language
-from `comparison::custom`:
+depends on livesplit-core with no default features. It only turns the
+functions in `comparison::custom::exports` into WebAssembly exports, so what
+the plugin does is tested together with the rest of custom comparisons:
 
 - id `livesplit.custom-comparisons` (`settings::PLUGIN_ID`);
 - `describe`: reads the settings into a `Library` and returns the program
-  names. Entries that can't be read are skipped, like on the desktop; the
-  editor shows what's wrong with them. Duplicate names keep the first one.
+  names. Entries that can't be read are skipped; the editor shows what's
+  wrong with them. Duplicate names keep the first one.
 - `generate`: evaluates the comparison for Real Time and Game Time from the
   snapshot, dropping history with attempt ids below 1 and using an attempt's
   end date (or start date) for the day-based blocks;
-- the export functions are thin wrappers around public Rust functions, so the
-  plugin can be tested without a WebAssembly runtime.
+- the WebAssembly exports only allocate, parse the input and write the
+  output.
 
 Build it with:
 
@@ -409,7 +387,7 @@ Build it with:
 cargo build -p livesplit-custom-comparisons-plugin --target wasm32-unknown-unknown --release
 ```
 
-## 9. Settings, the editor and desktop layouts
+## 9. Settings and the editor
 
 ### Settings
 
@@ -417,7 +395,7 @@ The plugin's settings are the runner's list of comparisons, and the same
 document is the "Export All" file:
 
 ```json
-{ "comparisons": [ { "format": "livesplit-custom-comparison", "version": 4, ... }, ... ] }
+{ "comparisons": [ { "format": "livesplit-custom-comparison", "version": 1, ... }, ... ] }
 ```
 
 `comparison::custom::settings::read` returns each entry as text. Empty
@@ -428,34 +406,23 @@ string otherwise.
 
 ### Editor
 
-`comparison::custom::Editor` manages that list of texts with the desktop
-settings' rules:
+`comparison::custom::Editor` manages that list of texts with these rules:
 
 - names are unique (ignoring case and surrounding spaces), can't be reserved
   (`RESERVED_NAMES`: Personal Best, None, Best Segments, Best Split Times,
-  Average Segments, Median Segments, Worst Segments, Balanced PB, Latest Run,
-  Golf HCP), can't start with `[Race]`, and can't be a comparison the run
+  Average Segments, Median Segments, Worst Segments, Balanced PB, Latest
+  Run), can't start with `[Race]`, and can't be a comparison the run
   already has;
 - an entry that can't be read stays byte for byte as it is: it can be
   exported, moved and removed, not renamed or edited;
-- `rename` also updates the `comparison` blocks of the other comparisons
-  (and the `cc_comparison` blocks in their desktop workspace), and fails
-  without changing anything if it can't;
+- `rename` also updates the `comparison` blocks of the other comparisons,
+  and fails without changing anything if it can't;
 - `state(run)` reports each entry's name, whether it's readable, its problem
   for this run, and how many others use it; `preview(...)` evaluates an
   edited text with origins for the preview table.
 
 The editor is created from settings and turns back into settings when
 closed, so the settings stay the only place the comparisons live.
-
-### Desktop layouts
-
-`layout::parser::custom_comparisons_settings(lsl)` reads a desktop `.lsl`
-and collects the `<Comparison>` texts of every component whose `<Path>` is
-`LiveSplit.CustomComparisons.dll`, from its
-`<Settings><Comparisons>...</Comparisons></Settings>`. It returns them as
-plugin settings, every entry as it is. This replaces the earlier Custom
-Comparisons layout component, which has been removed from livesplit-core.
 
 ## 10. C API
 
@@ -481,7 +448,6 @@ Two classes, generated into every binding by `capi/bind_gen`.
 | `from_settings(settings, run)` | Opens the editor; `NULL` if the settings can't be read. |
 | `into_settings(this)` | Closes it and returns the settings (also the Export All file). |
 | `read_settings(settings)` | JSON array of each comparison's text, or `null`. |
-| `read_layout(lsl)` | The comparisons of a desktop `.lsl` as settings; empty string if it isn't a layout. |
 | `state_as_json(this, run)` | Name, readability, problem and use count of every comparison. |
 | `len`, `name(index)` | |
 | `check_name(name)`, `check_rename(index, name)`, `suggest_name(name)` | Empty string when allowed, otherwise the reason; a free name like "Pace (2)". |
@@ -489,9 +455,6 @@ Two classes, generated into every binding by `capi/bind_gen`.
 | `remove(index)`, `move_up(index)`, `move_down(index)`, `used_by(index)` | |
 | `export(index)`, `export_compact(index)` | Indented JSON for a file, one line for chat. |
 | `preview_as_json(this, text, index, run, method)` | Per segment: name, segment and split time in seconds, origin path; or the error. |
-
-The editor used to be part of `layout-editing`; it moved to `run-editing`
-when the layout component was removed.
 
 ## 11. LiveSplit One integration
 
@@ -507,8 +470,7 @@ above:
   fails, LiveSplit One still works and the Custom Comparisons view shows why.
 - **Storage.** The settings are one global list in IndexedDB, store
   `settings`, key `customComparisons` (`storeCustomComparisons` /
-  `loadCustomComparisons` in `src/storage/index.ts`). `undefined` means
-  "never stored", which is different from an empty list.
+  `loadCustomComparisons` in `src/storage/index.ts`).
 - **Installing.** `LSOCommandSink.setCustomComparisons(plugin)` owns the
   current plugin, installs it, and re-installs it in `setRun`, so every way of
   loading splits gets the custom comparisons. `null` uninstalls by id. Each
@@ -516,16 +478,11 @@ above:
   it.
 - **Start-up order.** The plugin is installed before the stored current
   comparison is restored, since that may be a custom comparison.
-- **Migration.** `takeCustomComparisonsOutOfLayout` strips
-  `CustomComparisons` components (also inside `Group` and `Carousel`) from a
-  JSON layout. At start-up, if no list was ever stored, the comparisons of
-  the stored layout's components become the list. Imported `.ls1l` layouts
-  are stripped too, so they still parse.
 - **UI.** `src/ui/views/CustomComparisonsView.tsx` (opened from the timer
   sidebar) hosts the list and editor in `src/ui/views/CustomComparisons/`.
   `library.ts` opens a `CustomComparisonsEditor` per action and closes it
   right away, so no wasm object outlives an action. Import accepts an Export
-  All list, a single comparison, or an `.lsl` (via `readLayout`).
+  All list or a single comparison.
 
 ## 12. Building and testing
 
@@ -533,24 +490,23 @@ above:
 # The language and the plugin interface
 cargo test --lib comparison
 
-# Runs the real plugin through wasmtime and checks it matches the built-in
-# evaluator on real splits. Needs the wasm32-unknown-unknown target, as the
+# Runs the real plugin through wasmtime and checks it matches running its
+# code directly on real splits. Needs the wasm32-unknown-unknown target, as the
 # test builds the plugin with cargo.
 rustup target add wasm32-unknown-unknown
 cargo test --features comparison-plugins --test comparison_plugins
-
-# The desktop .lsl reader
-cargo test --test layout_parsing
 ```
 
-`src/comparison/custom/tests.rs` covers the format and the evaluator rules;
-`src/comparison/plugin/tests.rs` covers the snapshot and installation.
+`src/comparison/custom/tests.rs` covers the format, the evaluator rules, the
+editor, and installing the plugin on a timer (running the plugin's code
+directly); `src/comparison/plugin/tests.rs` covers the snapshot and
+installation.
 
 ## 13. Design decisions
 
-- **A plugin, not a layout component.** LiveSplit One's components are
-  strictly visual, so a component that draws nothing and only feeds
-  comparisons doesn't fit. A generic comparison plugin keeps livesplit-core's
+- **A plugin, not a layout component.** Layout components are strictly
+  visual, so a component that draws nothing and only feeds comparisons
+  doesn't fit. A generic comparison plugin keeps livesplit-core's
   comparison code free of the block language's storage and lets other
   comparison ideas use the same mechanism.
 - **WebAssembly with no imports and JSON in and out.** A plugin is a pure
@@ -562,6 +518,6 @@ cargo test --test layout_parsing
 - **Settings owned by the application.** One global list in LiveSplit One's
   storage, applied to every run, with export and import. No change to the
   `.lss` or layout formats.
-- **Same format and messages as the desktop.** A comparison file can be
-  shared between the desktop component and LiveSplit One, and gives the same
-  times in both.
+- **One versioned JSON format.** The same document is stored, exported and
+  shared, so a comparison posted in a chat is exactly what the runner who
+  made it uses. The version lets later releases add blocks safely.

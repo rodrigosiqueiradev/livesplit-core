@@ -740,7 +740,7 @@ fn reads_a_file_and_ignores_other_members() {
 }
 
 #[test]
-fn round_trips_and_writes_the_lowest_version() {
+fn round_trips() {
     let program = format::read(SAFE_PACE).unwrap();
     let once = format::write(&program);
     assert_eq!(format::read(&once).unwrap(), program);
@@ -750,7 +750,7 @@ fn round_trips_and_writes_the_lowest_version() {
 }
 
 #[test]
-fn every_version_4_block_round_trips() {
+fn nested_blocks_round_trip() {
     let root = Times::Round {
         step: ns(0.1),
         source: Box::new(Times::Clamp {
@@ -770,7 +770,7 @@ fn every_version_4_block_round_trips() {
         root,
     };
     let text = format::write(&program);
-    assert!(text.contains("\"version\": 4"));
+    assert!(text.contains("\"version\": 1"));
     assert_eq!(format::read(&text).unwrap(), program);
 }
 
@@ -778,7 +778,7 @@ fn every_version_4_block_round_trips() {
 fn errors_name_the_place() {
     let wrap = |root: &str| {
         format!(
-            r#"{{"format":"livesplit-custom-comparison","version":4,"name":"T","root":{root}}}"#
+            r#"{{"format":"livesplit-custom-comparison","version":1,"name":"T","root":{root}}}"#
         )
     };
     let error = |root: &str| format::read(&wrap(root)).unwrap_err().0;

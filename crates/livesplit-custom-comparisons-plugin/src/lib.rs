@@ -4,7 +4,7 @@
 //! the custom comparison JSON format:
 //!
 //! ```json
-//! { "comparisons": [ { "version": 4, "name": "...", ... }, ... ] }
+//! { "comparisons": [ { "version": 1, "name": "...", ... }, ... ] }
 //! ```
 //!
 //! It is built as a WebAssembly module that implements the comparison plugin
