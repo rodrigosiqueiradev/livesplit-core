@@ -4,7 +4,7 @@ use crate::{
     TimerPhase::{self, *},
     TimingMethod,
     analysis::check_best_segment,
-    comparison::{custom::Library, personal_best, plugin::Plugin},
+    comparison::{personal_best, plugin::Plugin},
     event::{Error, Event},
     platform::prelude::*,
     util::PopulateString,
@@ -273,21 +273,6 @@ impl Timer {
         } else {
             Err(Error::ComparisonDoesntExist)
         }
-    }
-
-    /// Replaces the custom comparisons installed on the run with the ones in
-    /// the library, usually the ones stored in the layout (see
-    /// [`Layout::custom_comparisons`](crate::Layout::custom_comparisons)).
-    /// Pass an empty library to remove them. The current attempt is kept. If
-    /// the current comparison no longer exists, the timer switches to the
-    /// Personal Best. Returns the names of the programs that weren't
-    /// installed because the run already has a comparison with that name.
-    pub fn set_custom_comparisons(&mut self, library: Library) -> Vec<String> {
-        let left_out = library.install(&mut self.run);
-        if !self.run.comparisons().any(|c| c == self.current_comparison) {
-            self.current_comparison = personal_best::NAME.to_string();
-        }
-        left_out
     }
 
     /// Accesses the split the attempt is currently on. If there's no attempt in

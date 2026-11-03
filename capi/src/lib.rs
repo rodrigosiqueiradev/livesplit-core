@@ -51,8 +51,6 @@ pub mod component;
 pub mod current_comparison_component;
 #[cfg(feature = "current-pace-component")]
 pub mod current_pace_component;
-#[cfg(feature = "custom-comparisons-component")]
-pub mod custom_comparisons_component;
 #[cfg(feature = "custom-comparisons-editor")]
 pub mod custom_comparisons_editor;
 #[cfg(feature = "delta-component")]

@@ -19,7 +19,6 @@ pub use self::{
 };
 
 use crate::{
-    comparison::custom::{Library, Program},
     component::{previous_segment, splits, timer, title},
     localization::Lang,
     platform::prelude::*,
@@ -149,50 +148,6 @@ impl Layout {
             components: self.components.iter().map(Component::settings).collect(),
             general: self.settings.clone(),
         }
-    }
-
-    /// The text of every custom comparison stored in the layout's Custom
-    /// Comparisons components, including the ones inside groups and
-    /// carousels and the ones that can't be read, as the settings of the
-    /// Custom Comparisons plugin. This is how comparisons are taken over from
-    /// a layout, like one made with the desktop LiveSplit.
-    pub fn custom_comparisons_settings(&self) -> String {
-        fn collect<'a>(components: &'a [Component], texts: &mut Vec<&'a str>) {
-            for component in components {
-                if let Component::CustomComparisons(component) = component {
-                    texts.extend(component.settings().comparisons.iter().map(String::as_str));
-                } else if let Some(children) = component.children() {
-                    collect(children, texts);
-                }
-            }
-        }
-
-        let mut texts = Vec::new();
-        collect(&self.components, &mut texts);
-        crate::comparison::custom::settings::write(texts)
-    }
-
-    /// The custom comparisons stored in the layout's Custom Comparisons
-    /// components, including the ones inside groups and carousels. Install
-    /// them on the run with [`Timer::set_custom_comparisons`] whenever the
-    /// layout or the run changes. If two comparisons share a name, the first
-    /// one wins.
-    ///
-    /// [`Timer::set_custom_comparisons`]: crate::Timer::set_custom_comparisons
-    pub fn custom_comparisons(&self) -> Library {
-        fn collect(components: &[Component], programs: &mut Vec<Program>) {
-            for component in components {
-                if let Component::CustomComparisons(component) = component {
-                    programs.extend(component.library().programs().iter().cloned());
-                } else if let Some(children) = component.children() {
-                    collect(children, programs);
-                }
-            }
-        }
-
-        let mut programs = Vec::new();
-        collect(&self.components, &mut programs);
-        Library::new(programs)
     }
 
     /// Scrolls up all the components in the layout that can be scrolled up.

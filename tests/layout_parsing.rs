@@ -5,7 +5,10 @@ mod parse {
     use livesplit_core::{
         Component, Lang, TimingMethod,
         component::{splits, text},
-        layout::{Layout, parser::parse},
+        layout::{
+            Layout,
+            parser::{self, parse},
+        },
     };
 
     #[track_caller]
@@ -244,17 +247,25 @@ mod parse {
       </Settings>
     </Component>
   </Components>"#;
-        let l = livesplit(&layout_files::DARK.replace("</Components>", component));
-        let Some(Component::CustomComparisons(c)) = l.components.last() else {
-            panic!("Custom Comparisons component not found");
-        };
-        let comparisons = &c.settings().comparisons;
+        let source = layout_files::DARK.replace("</Components>", component);
+
+        // LiveSplit One has no such component, so the layout is read without
+        // it, and the comparisons are taken over separately.
+        let l = livesplit(&source);
+        assert_eq!(
+            l.components.len(),
+            livesplit(layout_files::DARK).components.len()
+        );
+
+        let settings = parser::custom_comparisons_settings(&source).unwrap();
+        let comparisons = livesplit_core::comparison::custom::settings::read(&settings).unwrap();
         assert_eq!(comparisons.len(), 2);
+        assert!(comparisons[0].contains(r#""name":"Fast & Safe""#));
         assert!(comparisons[1].contains(r#""version":99"#));
 
-        let library = l.custom_comparisons();
-        assert_eq!(library.programs().len(), 1);
-        assert_eq!(library.programs()[0].name, "Fast & Safe");
+        let settings = parser::custom_comparisons_settings(layout_files::DARK).unwrap();
+        assert_eq!(settings, r#"{"comparisons":[]}"#);
+        assert!(parser::custom_comparisons_settings("not a layout").is_err());
     }
 
     #[test]

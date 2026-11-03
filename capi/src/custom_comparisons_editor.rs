@@ -1,5 +1,5 @@
-//! The Custom Comparisons Editor edits the custom comparisons stored in a
-//! layout's Custom Comparisons Component. It follows the same rules as the
+//! The Custom Comparisons Editor edits the custom comparisons kept in the
+//! settings of the Custom Comparisons plugin. It follows the same rules as the
 //! desktop LiveSplit component Custom Comparisons: names are unique (ignoring
 //! case) and can't be one of LiveSplit's own comparisons or one the run
 //! already has, a comparison that can't be read is kept exactly as it is, and
@@ -11,8 +11,9 @@
 
 use super::{Json, output_str, output_vec, str};
 use livesplit_core::{
-    LayoutEditor, Run, TimingMethod,
+    Run, TimingMethod,
     comparison::custom::{self, Editor as CustomComparisonsEditor},
+    layout::parser,
 };
 use std::os::raw::c_char;
 
@@ -23,36 +24,6 @@ pub type NullableOwnedCustomComparisonsEditor = Option<OwnedCustomComparisonsEdi
 
 fn result(result: Result<(), String>) -> *const c_char {
     output_str(result.err().unwrap_or_default())
-}
-
-/// Creates a new Custom Comparisons Editor for the comparisons stored in the
-/// component selected in the Layout Editor. The run provides the comparisons
-/// the custom comparisons can't be named after, like the ones stored in the
-/// splits. If the selected component isn't a Custom Comparisons Component,
-/// <NULL> is returned instead.
-#[unsafe(no_mangle)]
-pub extern "C" fn CustomComparisonsEditor_new(
-    layout_editor: &LayoutEditor,
-    run: &Run,
-) -> NullableOwnedCustomComparisonsEditor {
-    let comparisons = layout_editor.custom_comparisons()?;
-    Some(Box::new(CustomComparisonsEditor::new(
-        comparisons.iter().cloned(),
-        run,
-    )))
-}
-
-/// Closes the Custom Comparisons Editor and stores the comparisons in the
-/// component selected in the Layout Editor. Returns whether they were stored,
-/// which they aren't if the selected component isn't a Custom Comparisons
-/// Component anymore. In case you want to implement a Cancel Button, just
-/// drop the editor instead.
-#[unsafe(no_mangle)]
-pub extern "C" fn CustomComparisonsEditor_close(
-    this: OwnedCustomComparisonsEditor,
-    layout_editor: &mut LayoutEditor,
-) -> bool {
-    layout_editor.set_custom_comparisons((*this).close())
 }
 
 /// Creates a new Custom Comparisons Editor for the comparisons in the
@@ -101,6 +72,23 @@ pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const 
         }),
         Err(_) => output_str("null"),
     }
+}
+
+/// Reads the custom comparisons stored in a layout file of the desktop
+/// LiveSplit (`.lsl`) by its Custom Comparisons component, and returns them
+/// as the settings of the Custom Comparisons plugin. Comparisons that can't
+/// be read are included as they are. If the file can't be read as a layout,
+/// an empty string is returned instead.
+///
+/// # Safety
+///
+/// `layout` must be a valid string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn CustomComparisonsEditor_read_layout(
+    layout: *const c_char,
+) -> *const c_char {
+    // SAFETY: The caller guarantees that `layout` is valid.
+    output_str(parser::custom_comparisons_settings(unsafe { str(layout) }).unwrap_or_default())
 }
 
 /// drop
