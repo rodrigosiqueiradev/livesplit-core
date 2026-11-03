@@ -8,7 +8,10 @@ use livesplit_core::{
     layout::{LayoutSettings, LayoutState, parser},
     settings::ImageCache,
 };
-use std::io::{BufReader, Cursor};
+use std::{
+    io::{BufReader, Cursor},
+    os::raw::c_char,
+};
 
 /// type
 pub type OwnedLayout = Box<Layout>;
@@ -35,7 +38,7 @@ pub extern "C" fn Layout_default_layout(lang: Lang) -> OwnedLayout {
 /// (`{"comparisons": [...]}`). Use it to take over the comparisons of a
 /// layout, like one made with the desktop LiveSplit.
 #[unsafe(no_mangle)]
-pub extern "C" fn Layout_custom_comparisons_settings(this: &Layout) -> Json {
+pub extern "C" fn Layout_custom_comparisons_settings(this: &Layout) -> *const c_char {
     output_str(this.custom_comparisons_settings())
 }
 
