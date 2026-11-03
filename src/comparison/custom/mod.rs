@@ -3,7 +3,8 @@
 //! A custom comparison is a small program, like "the median of my last 10
 //! finished runs, never faster than my golds, gaps filled from my PB". It is
 //! pure data: a tree of blocks from a fixed set ([`ast`]), stored in a small
-//! versioned JSON format ([`format`]).
+//! versioned JSON format ([`format`]) that LiveSplit's desktop Custom
+//! Comparisons component reads and writes too.
 //!
 //! # How it fits into livesplit-core
 //!
@@ -51,7 +52,7 @@ pub use self::{
     ast::Program,
     editor::Editor,
     evaluator::{ComparisonResult, Evaluator},
-    format::FormatError,
+    format::{Document, FormatError},
 };
 
 use self::{
@@ -66,7 +67,8 @@ use crate::{
 use alloc::collections::{BTreeMap, BTreeSet};
 
 /// The comparisons LiveSplit generates itself, which custom comparisons can
-/// use but not be named after.
+/// use but not be named after. Golf HCP is included because the original
+/// LiveSplit offers it, and a comparison made there must not clash with it.
 pub const RESERVED_NAMES: &[&str] = &[
     personal_best::NAME,
     super::none::NAME,
@@ -77,6 +79,7 @@ pub const RESERVED_NAMES: &[&str] = &[
     super::worst_segments::NAME,
     super::balanced_pb::NAME,
     super::latest_run::NAME,
+    "Golf HCP",
 ];
 
 /// Checks whether `name` can be used for a new custom comparison. Returns a

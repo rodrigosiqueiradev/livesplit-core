@@ -20,7 +20,7 @@ in LiveSplit One's
 6. [The plugin ABI, version 1](#6-the-plugin-abi-version-1)
 7. [Engines](#7-engines)
 8. [The Custom Comparisons plugin](#8-the-custom-comparisons-plugin)
-9. [Settings and the editor](#9-settings-and-the-editor)
+9. [Settings, the editor and LiveSplit layouts](#9-settings-the-editor-and-livesplit-layouts)
 10. [C API](#10-c-api)
 11. [LiveSplit One integration](#11-livesplit-one-integration)
 12. [Building and testing](#12-building-and-testing)
@@ -31,7 +31,8 @@ in LiveSplit One's
 A custom comparison is a small program, a tree of blocks from a fixed set,
 that turns the run's history into one time per segment. Runners build them
 in a block editor, keep them as one list, and share them as small JSON
-files.
+files. LiveSplit's desktop Custom Comparisons component uses the same files
+and the same rules, so a comparison gives the same times in both.
 
 The pieces, from the bottom up:
 
@@ -54,6 +55,9 @@ src/comparison/plugin/          the generic plugin interface
 
 crates/livesplit-custom-comparisons-plugin/
                                 the Custom Comparisons plugin (wasm32 cdylib)
+
+src/layout/parser/custom_comparisons.rs
+                                reads the comparisons out of a LiveSplit .lsl
 
 capi/src/comparison_plugin.rs   C API: ComparisonPlugin_*
 capi/src/custom_comparisons_editor.rs
@@ -143,7 +147,8 @@ One comparison is one JSON document:
       }
     },
     "fallback": { "type": "comparison", "name": "Personal Best" }
-  }
+  },
+  "workspace": { }
 }
 ```
 
@@ -153,6 +158,10 @@ One comparison is one JSON document:
   without an older one misreading its files.
 - `name` is trimmed, non-empty and at most 64 characters.
 - `root` is a `Times` block.
+- `workspace` is optional: the desktop component's block editor layout
+  (block positions and so on). It is kept as is in `Document::workspace` and
+  never evaluated, so a comparison opens on the desktop as it was. LiveSplit
+  One's editor writes it back only if the blocks didn't change.
 - Other members are ignored.
 
 Writing (`format::write`, `format::write_compact`) produces the same
@@ -387,7 +396,7 @@ Build it with:
 cargo build -p livesplit-custom-comparisons-plugin --target wasm32-unknown-unknown --release
 ```
 
-## 9. Settings and the editor
+## 9. Settings, the editor and LiveSplit layouts
 
 ### Settings
 
@@ -411,18 +420,27 @@ string otherwise.
 - names are unique (ignoring case and surrounding spaces), can't be reserved
   (`RESERVED_NAMES`: Personal Best, None, Best Segments, Best Split Times,
   Average Segments, Median Segments, Worst Segments, Balanced PB, Latest
-  Run), can't start with `[Race]`, and can't be a comparison the run
-  already has;
+  Run, and Golf HCP, which the desktop LiveSplit offers), can't start with
+  `[Race]`, and can't be a comparison the run already has;
 - an entry that can't be read stays byte for byte as it is: it can be
   exported, moved and removed, not renamed or edited;
-- `rename` also updates the `comparison` blocks of the other comparisons,
-  and fails without changing anything if it can't;
+- `rename` also updates the `comparison` blocks of the other comparisons
+  (and the comparison blocks in their `workspace`), and fails without
+  changing anything if it can't;
 - `state(run)` reports each entry's name, whether it's readable, its problem
   for this run, and how many others use it; `preview(...)` evaluates an
   edited text with origins for the preview table.
 
 The editor is created from settings and turns back into settings when
 closed, so the settings stay the only place the comparisons live.
+
+### LiveSplit layouts
+
+`layout::parser::custom_comparisons_settings(lsl)` reads a LiveSplit `.lsl`
+and collects the `<Comparison>` texts of every component whose `<Path>` is
+`LiveSplit.CustomComparisons.dll`, from its
+`<Settings><Comparisons>...</Comparisons></Settings>`. It returns them as
+plugin settings, every entry as it is, so an application can import them.
 
 ## 10. C API
 
@@ -448,6 +466,7 @@ Two classes, generated into every binding by `capi/bind_gen`.
 | `from_settings(settings, run)` | Opens the editor; `NULL` if the settings can't be read. |
 | `into_settings(this)` | Closes it and returns the settings (also the Export All file). |
 | `read_settings(settings)` | JSON array of each comparison's text, or `null`. |
+| `read_layout(lsl)` | The comparisons of a LiveSplit `.lsl` as settings; empty string if it isn't a layout. |
 | `state_as_json(this, run)` | Name, readability, problem and use count of every comparison. |
 | `len`, `name(index)` | |
 | `check_name(name)`, `check_rename(index, name)`, `suggest_name(name)` | Empty string when allowed, otherwise the reason; a free name like "Pace (2)". |
@@ -495,6 +514,9 @@ cargo test --lib comparison
 # test builds the plugin with cargo.
 rustup target add wasm32-unknown-unknown
 cargo test --features comparison-plugins --test comparison_plugins
+
+# The .lsl reader
+cargo test --test layout_parsing
 ```
 
 `src/comparison/custom/tests.rs` covers the format, the evaluator rules, the
@@ -520,4 +542,5 @@ installation.
   `.lss` or layout formats.
 - **One versioned JSON format.** The same document is stored, exported and
   shared, so a comparison posted in a chat is exactly what the runner who
-  made it uses. The version lets later releases add blocks safely.
+  made it uses, in LiveSplit One or on the desktop. The version lets later
+  releases add blocks safely.

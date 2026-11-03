@@ -9,7 +9,8 @@ use super::{
     ast::{AggregateKind, NANOS_PER_SECOND, Nanos, PickKind, RangeCase, Samples, Times},
     check_name,
     evaluator::{ComparisonResult, Evaluator},
-    exports, format,
+    exports,
+    format::{self, Document},
     run_data::{AttemptData, RunData, SegmentData},
     settings,
 };
@@ -728,22 +729,23 @@ const SAFE_PACE: &str = r#"{
     },
     "fallback": { "type": "comparison", "name": "Personal Best" }
   },
-  "editor": { "collapsed": [] }
+  "workspace": { "blocks": { "languageVersion": 0 } }
 }"#;
 
 #[test]
-fn reads_a_file_and_ignores_other_members() {
-    let program = format::read(SAFE_PACE).unwrap();
-    assert_eq!(program.name, "Safe Pace");
-    assert!(matches!(program.root, Times::Fallback { .. }));
-    assert!(!format::write(&program).contains("editor"));
+fn reads_a_desktop_file_and_keeps_the_workspace() {
+    let document = format::read(SAFE_PACE).unwrap();
+    assert_eq!(document.program.name, "Safe Pace");
+    assert!(matches!(document.program.root, Times::Fallback { .. }));
+    assert!(document.workspace.is_some());
+    assert!(format::write(&document).contains("languageVersion"));
 }
 
 #[test]
 fn round_trips() {
-    let program = format::read(SAFE_PACE).unwrap();
-    let once = format::write(&program);
-    assert_eq!(format::read(&once).unwrap(), program);
+    let document = format::read(SAFE_PACE).unwrap();
+    let once = format::write(&document);
+    assert_eq!(format::read(&once).unwrap(), document);
     assert!(once.contains("\"version\": 1"));
     assert!(once.contains("\"seconds\": 0.5"));
     assert!(once.contains("\"count\": 10"));
@@ -765,13 +767,16 @@ fn nested_blocks_round_trip() {
             high: Box::new(Times::BestRecentRun { days: 30 }),
         }),
     };
-    let program = Program {
-        name: "V4".into(),
-        root,
+    let document = Document {
+        program: Program {
+            name: "V4".into(),
+            root,
+        },
+        workspace: None,
     };
-    let text = format::write(&program);
+    let text = format::write(&document);
     assert!(text.contains("\"version\": 1"));
-    assert_eq!(format::read(&text).unwrap(), program);
+    assert_eq!(format::read(&text).unwrap(), document);
 }
 
 #[test]
@@ -842,7 +847,15 @@ impl Engine for Direct {
 
 /// Installs the plugin with these programs on the run.
 fn install(programs: &[Program], run: &mut Run) -> Vec<String> {
-    let texts: Vec<String> = programs.iter().map(format::write_compact).collect();
+    let texts: Vec<String> = programs
+        .iter()
+        .map(|program| {
+            format::write_compact(&Document {
+                program: program.clone(),
+                workspace: None,
+            })
+        })
+        .collect();
     Plugin::new(
         settings::PLUGIN_ID,
         settings::write(&texts),
@@ -940,7 +953,10 @@ fn generator_handles_both_timing_methods() {
 // ------------------------------------------------------------------ Installing
 
 fn program_json(name: &str) -> String {
-    format::write(&program(name))
+    format::write(&Document {
+        program: program(name),
+        workspace: None,
+    })
 }
 
 fn program(name: &str) -> Program {
@@ -1012,12 +1028,23 @@ fn editor_names(editor: &Editor) -> Vec<String> {
 }
 
 fn using(name: &str, uses: &str) -> String {
-    format::write_compact(&Program {
-        name: name.into(),
-        root: Times::Fallback {
-            primary: cmp(uses),
-            fallback: cmp("Personal Best"),
+    format::write_compact(&Document {
+        program: Program {
+            name: name.into(),
+            root: Times::Fallback {
+                primary: cmp(uses),
+                fallback: cmp("Personal Best"),
+            },
         },
+        workspace: Some(serde_json::json!({
+            "blocks": { "blocks": [{
+                "type": "cc_fallback",
+                "inputs": { "PRIMARY": { "block": {
+                    "type": "cc_comparison",
+                    "fields": { "NAME": uses },
+                }}},
+            }]},
+        })),
     })
 }
 
@@ -1068,11 +1095,16 @@ fn editor_rename_updates_the_comparisons_that_use_it() {
     let stored = editor.close();
     let user = format::read(&stored[1]).unwrap();
     assert_eq!(
-        user.root,
+        user.program.root,
         Times::Fallback {
             primary: cmp("Safe"),
             fallback: cmp("Personal Best"),
         }
+    );
+    let workspace = user.workspace.unwrap();
+    assert_eq!(
+        workspace["blocks"]["blocks"][0]["inputs"]["PRIMARY"]["block"]["fields"]["NAME"],
+        "Safe"
     );
     // Comparisons that don't use it stay exactly as they were.
     assert_eq!(stored[2], unrelated);

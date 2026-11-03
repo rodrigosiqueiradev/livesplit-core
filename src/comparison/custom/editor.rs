@@ -16,10 +16,15 @@
 //! It also provides the state of the list and a preview of a comparison being
 //! edited, for a user interface to show.
 
-use super::{Library, Program, ast::Times, check_name, format, preview as evaluate, same_name};
+use super::{
+    Document, Library, Program, ast::Times, check_name, format, preview as evaluate, same_name,
+};
 use crate::{Run, TimingMethod, platform::prelude::*};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// The block editor's comparison block, inside a stored workspace.
+const COMPARISON_BLOCK_TYPE: &str = "cc_comparison";
 
 /// The message for a rename that couldn't update the comparisons using it.
 const RENAME_FAILED: &str =
@@ -30,30 +35,30 @@ const RENAME_FAILED: &str =
 #[derive(Clone, Debug)]
 struct Entry {
     text: String,
-    program: Result<Program, String>,
+    document: Result<Document, String>,
 }
 
 impl Entry {
     fn load(text: String) -> Self {
-        let program = format::read(&text).map_err(|e| e.0);
-        Self { text, program }
+        let document = format::read(&text).map_err(|e| e.0);
+        Self { text, document }
     }
 
-    fn from_program(program: Program) -> Self {
+    fn from_document(document: Document) -> Self {
         Self {
-            text: format::write_compact(&program),
-            program: Ok(program),
+            text: format::write_compact(&document),
+            document: Ok(document),
         }
     }
 
     fn program(&self) -> Option<&Program> {
-        self.program.as_ref().ok()
+        self.document.as_ref().ok().map(|d| &d.program)
     }
 
     /// The comparison's name, or a best guess for one that can't be read.
     fn name(&self) -> String {
-        match &self.program {
-            Ok(program) => program.name.clone(),
+        match &self.document {
+            Ok(document) => document.program.name.clone(),
             Err(_) => guess_name(&self.text).unwrap_or_else(|| "(unreadable comparison)".into()),
         }
     }
@@ -71,14 +76,14 @@ fn load(texts: impl IntoIterator<Item = String>) -> Vec<Entry> {
     let mut entries: Vec<Entry> = Vec::new();
     for text in texts {
         let mut entry = Entry::load(text);
-        if let Ok(program) = &entry.program {
-            let name = &program.name;
+        if let Ok(document) = &entry.document {
+            let name = &document.program.name;
             if entries
                 .iter()
                 .filter_map(Entry::program)
                 .any(|p| same_name(&p.name, name))
             {
-                entry.program = Err(format!(
+                entry.document = Err(format!(
                     "Another comparison is already called '{name}'. Rename one of them."
                 ));
             }
@@ -271,23 +276,23 @@ impl Editor {
     /// name is taken. In that case, [`suggest_name`](Self::suggest_name) and
     /// [`add_as`](Self::add_as) can be used to add it under another name.
     pub fn add(&mut self, text: &str) -> Result<(), String> {
-        let program = format::read(text).map_err(|e| e.0)?;
-        if let Some(problem) = self.check_name(&program.name, None) {
+        let document = format::read(text).map_err(|e| e.0)?;
+        if let Some(problem) = self.check_name(&document.program.name, None) {
             return Err(problem);
         }
-        self.entries.push(Entry::from_program(program));
+        self.entries.push(Entry::from_document(document));
         Ok(())
     }
 
     /// Adds a comparison from its text under another name. Returns why it
     /// can't be added.
     pub fn add_as(&mut self, text: &str, name: &str) -> Result<(), String> {
-        let mut program = format::read(text).map_err(|e| e.0)?;
+        let mut document = format::read(text).map_err(|e| e.0)?;
         if let Some(problem) = self.check_name(name, None) {
             return Err(problem);
         }
-        program.name = name.trim().into();
-        self.entries.push(Entry::from_program(program));
+        document.program.name = name.trim().into();
+        self.entries.push(Entry::from_document(document));
         Ok(())
     }
 
@@ -301,11 +306,11 @@ impl Editor {
     /// Panics if the index is out of bounds.
     pub fn replace(&mut self, index: usize, text: &str) -> Result<(), String> {
         assert!(index < self.entries.len(), "The index is out of bounds.");
-        let program = format::read(text).map_err(|e| e.0)?;
-        if let Some(problem) = self.check_name(&program.name, Some(index)) {
+        let document = format::read(text).map_err(|e| e.0)?;
+        if let Some(problem) = self.check_name(&document.program.name, Some(index)) {
             return Err(problem);
         }
-        self.entries[index] = Entry::from_program(program);
+        self.entries[index] = Entry::from_document(document);
         self.reload();
         Ok(())
     }
@@ -332,24 +337,27 @@ impl Editor {
         // Build the whole list first, so a failure leaves everything as it was.
         let mut texts = Vec::with_capacity(self.entries.len());
         for (i, entry) in self.entries.iter().enumerate() {
-            let Ok(program) = &entry.program else {
+            let Ok(document) = &entry.document else {
                 // Unreadable comparisons stay exactly as they are.
                 texts.push(entry.text.clone());
                 continue;
             };
-            let mut program = program.clone();
+            let mut document = document.clone();
             let changed = if i == index {
-                program.name = new_name.into();
+                document.program.name = new_name.into();
                 true
             } else {
-                rewrite(&mut program.root, &old_name, new_name)
+                rewrite(&mut document.program.root, &old_name, new_name)
             };
             if !changed {
                 // Neither does a comparison that doesn't use this one.
                 texts.push(entry.text.clone());
                 continue;
             }
-            let text = format::write_compact(&program);
+            if let Some(workspace) = &mut document.workspace {
+                rewrite_workspace(workspace, &old_name, new_name);
+            }
+            let text = format::write_compact(&document);
             if format::read(&text).is_err() {
                 return Err(RENAME_FAILED.into());
             }
@@ -402,8 +410,8 @@ impl Editor {
     /// Panics if the index is out of bounds.
     pub fn export(&self, index: usize) -> String {
         let entry = &self.entries[index];
-        match &entry.program {
-            Ok(program) => format::write(program),
+        match &entry.document {
+            Ok(document) => format::write(document),
             Err(_) => entry.text.clone(),
         }
     }
@@ -417,8 +425,8 @@ impl Editor {
     /// Panics if the index is out of bounds.
     pub fn export_compact(&self, index: usize) -> String {
         let entry = &self.entries[index];
-        match &entry.program {
-            Ok(program) => format::write_compact(program),
+        match &entry.document {
+            Ok(document) => format::write_compact(document),
             Err(_) => entry.text.clone(),
         }
     }
@@ -450,10 +458,10 @@ impl Editor {
                 .iter()
                 .enumerate()
                 .map(|(index, entry)| {
-                    let problem = match &entry.program {
+                    let problem = match &entry.document {
                         Err(error) => Some(error.clone()),
-                        Ok(program) => {
-                            let name = &program.name;
+                        Ok(document) => {
+                            let name = &document.program.name;
                             check_name(name, self.other_comparisons.iter().map(String::as_str))
                                 .or_else(|| {
                                     [TimingMethod::RealTime, TimingMethod::GameTime]
@@ -474,7 +482,7 @@ impl Editor {
                     };
                     ComparisonState {
                         name: entry.name(),
-                        readable: entry.program.is_ok(),
+                        readable: entry.document.is_ok(),
                         problem,
                         used_by: self.used_by(index),
                     }
@@ -506,11 +514,11 @@ impl Editor {
                 .collect(),
         };
 
-        let program = match format::read(text) {
-            Ok(program) => program,
+        let document = match format::read(text) {
+            Ok(document) => document,
             Err(error) => return empty(error.0),
         };
-        let name = program.name.clone();
+        let name = document.program.name.clone();
         let others = self
             .entries
             .iter()
@@ -519,7 +527,7 @@ impl Editor {
             .filter_map(|(_, e)| e.program())
             .filter(|p| !same_name(&p.name, &name))
             .cloned();
-        let library = Library::new(core::iter::once(program).chain(others));
+        let library = Library::new(core::iter::once(document.program).chain(others));
         let names: Vec<String> = run.comparisons().map(String::from).collect();
 
         let Some(result) = evaluate(
@@ -649,5 +657,38 @@ fn rewrite(node: &mut Times, old: &str, new: &str) -> bool {
             }
             changed | rewrite(otherwise, old, new)
         }
+    }
+}
+
+/// Updates the names in the comparison blocks of the desktop block editor's
+/// layout, so the desktop editor shows the new name too. Everything else
+/// stays.
+fn rewrite_workspace(value: &mut Value, old: &str, new: &str) {
+    match value {
+        Value::Object(object) => {
+            let is_comparison =
+                object.get("type").and_then(Value::as_str) == Some(COMPARISON_BLOCK_TYPE);
+            for (key, member) in object.iter_mut() {
+                if let (true, "fields", Value::Object(fields)) =
+                    (is_comparison, key.as_str(), &mut *member)
+                {
+                    for (field, value) in fields.iter_mut() {
+                        if field == "NAME" && value.as_str().is_some_and(|n| same_name(n, old)) {
+                            *value = new.into();
+                        } else {
+                            rewrite_workspace(value, old, new);
+                        }
+                    }
+                } else {
+                    rewrite_workspace(member, old, new);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                rewrite_workspace(item, old, new);
+            }
+        }
+        _ => {}
     }
 }

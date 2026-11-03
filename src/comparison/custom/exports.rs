@@ -22,7 +22,9 @@ use crate::{
 pub fn library(settings: &str) -> Result<Library, String> {
     let texts = settings::read(settings)?;
     Ok(Library::new(
-        texts.iter().filter_map(|text| format::read(text).ok()),
+        texts
+            .iter()
+            .filter_map(|text| Some(format::read(text).ok()?.program)),
     ))
 }
 

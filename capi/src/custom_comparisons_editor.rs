@@ -12,6 +12,7 @@ use super::{Json, output_str, output_vec, str};
 use livesplit_core::{
     Run, TimingMethod,
     comparison::custom::{self, Editor as CustomComparisonsEditor},
+    layout::parser,
 };
 use std::os::raw::c_char;
 
@@ -70,6 +71,23 @@ pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const 
         }),
         Err(_) => output_str("null"),
     }
+}
+
+/// Reads the custom comparisons stored in a layout file of the original
+/// LiveSplit (`.lsl`) by its Custom Comparisons component, and returns them
+/// as the settings of the Custom Comparisons plugin, so they can be imported.
+/// Comparisons that can't be read are included as they are. If the file
+/// can't be read as a layout, an empty string is returned instead.
+///
+/// # Safety
+///
+/// `layout` must be a valid string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn CustomComparisonsEditor_read_layout(
+    layout: *const c_char,
+) -> *const c_char {
+    // SAFETY: The caller guarantees that `layout` is valid.
+    output_str(parser::custom_comparisons_settings(unsafe { str(layout) }).unwrap_or_default())
 }
 
 /// drop

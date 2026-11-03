@@ -1,19 +1,23 @@
 //! Reads and writes the custom comparison file format.
 //!
 //! A custom comparison is stored, exported and shared as a small versioned
-//! JSON document:
+//! JSON document. LiveSplit's desktop Custom Comparisons component reads and
+//! writes the same documents:
 //!
 //! ```json
 //! {
 //!   "format": "livesplit-custom-comparison",
 //!   "version": 1,
 //!   "name": "Safe Pace",
-//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } }
+//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } },
+//!   "workspace": { ... }
 //! }
 //! ```
 //!
 //! A file is pure data: it can only describe blocks from the fixed set in
-//! [`ast`](super::ast). Other members are ignored.
+//! [`ast`](super::ast). `workspace` is the desktop block editor's own layout
+//! and is only kept so the file can be opened there again as it was; it is
+//! never evaluated.
 //!
 //! The version lets a later release add blocks or change the format: a file
 //! with a newer version than this build understands is refused with a message
@@ -58,6 +62,16 @@ pub const MAX_SCALE_PERCENT: f64 = 1000.0;
 /// The largest share the trim block may drop from each end.
 pub const MAX_TRIM_PERCENT: f64 = 45.0;
 
+/// A program plus the desktop editor's layout that belongs to it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Document {
+    /// The comparison.
+    pub program: Program,
+    /// The desktop block editor's layout (block positions and so on). Kept
+    /// as is, never evaluated. `None` for files without one.
+    pub workspace: Option<Value>,
+}
+
 /// A file that can't be read. The message is meant for the runner.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatError(pub String);
@@ -74,23 +88,26 @@ type Result<T> = core::result::Result<T, FormatError>;
 
 // ------------------------------------------------------------------ Writing
 
-/// Writes a comparison as indented JSON, the way files are exported.
-pub fn write(program: &Program) -> String {
-    serde_json::to_string_pretty(&to_value(program)).expect("A JSON value can always be written")
+/// Writes a document as indented JSON, the way files are exported.
+pub fn write(document: &Document) -> String {
+    serde_json::to_string_pretty(&to_value(document)).expect("A JSON value can always be written")
 }
 
-/// Writes a comparison as JSON on a single line, the way comparisons are
-/// stored and copied to the clipboard, so chat apps don't mangle them.
-pub fn write_compact(program: &Program) -> String {
-    serde_json::to_string(&to_value(program)).expect("A JSON value can always be written")
+/// Writes a document as JSON on a single line, the way comparisons are stored
+/// in a layout and copied to the clipboard, so chat apps don't mangle them.
+pub fn write_compact(document: &Document) -> String {
+    serde_json::to_string(&to_value(document)).expect("A JSON value can always be written")
 }
 
-fn to_value(program: &Program) -> Value {
+fn to_value(document: &Document) -> Value {
     let mut root = Map::new();
     root.insert("format".into(), FORMAT_ID.into());
     root.insert("version".into(), CURRENT_VERSION.into());
-    root.insert("name".into(), program.name.as_str().into());
-    root.insert("root".into(), write_times(&program.root));
+    root.insert("name".into(), document.program.name.as_str().into());
+    root.insert("root".into(), write_times(&document.program.root));
+    if let Some(workspace) = &document.workspace {
+        root.insert("workspace".into(), workspace.clone());
+    }
     Value::Object(root)
 }
 
@@ -275,7 +292,7 @@ const fn kind_name(kind: AggregateKind) -> &'static str {
 // ------------------------------------------------------------------ Reading
 
 /// Reads a comparison file. Errors are meant for the runner.
-pub fn read(text: &str) -> Result<Program> {
+pub fn read(text: &str) -> Result<Document> {
     let json: Value = serde_json::from_str(text)
         .map_err(|e| FormatError(format!("This isn't valid JSON: {e}")))?;
 
@@ -303,10 +320,12 @@ pub fn read(text: &str) -> Result<Program> {
         )));
     }
 
-    Ok(Program {
+    let program = Program {
         name: name.trim().to_string(),
         root: read_times(required(root, "root", "")?, "root")?,
-    })
+    };
+    let workspace = root.get("workspace").filter(|w| !w.is_null()).cloned();
+    Ok(Document { program, workspace })
 }
 
 const LIST_TYPES: &[&str] = &[
