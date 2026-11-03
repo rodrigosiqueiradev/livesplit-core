@@ -26,7 +26,6 @@ use core::{fmt, mem::MaybeUninit, num::ParseIntError, str};
 mod blank_space;
 mod current_comparison;
 mod current_pace;
-mod custom_comparisons;
 mod delta;
 mod detailed_timer;
 mod graph;
@@ -42,8 +41,6 @@ mod total_playtime;
 
 #[cfg(all(windows, feature = "std"))]
 mod font_resolving;
-
-pub use self::custom_comparisons::custom_comparisons_settings;
 
 // One single row component is:
 // 1.0 units high in component space.

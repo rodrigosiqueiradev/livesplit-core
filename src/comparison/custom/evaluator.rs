@@ -1,7 +1,6 @@
 //! Evaluates custom comparison programs against a run.
 //!
-//! This is a port of the desktop LiveSplit component's engine and follows the
-//! same rules, so a comparison file gives the same times in both:
+//! The rules:
 //!
 //! - Everything is per segment. An empty segment stays empty unless a
 //!   fallback fills it, and once a segment is empty every later split time is

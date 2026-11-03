@@ -5,7 +5,8 @@
 //! { "comparisons": [ { "format": "livesplit-custom-comparison", ... }, ... ] }
 //! ```
 //!
-//! Each entry is a comparison in the desktop format ([`format`](super::format)).
+//! Each entry is a comparison in the custom comparison format
+//! ([`format`](super::format)).
 //! A comparison that isn't even valid JSON is kept as a string, so nothing
 //! the runner made is ever lost.
 
