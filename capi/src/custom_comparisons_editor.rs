@@ -81,13 +81,13 @@ pub unsafe extern "C" fn CustomComparisonsEditor_from_settings(
 #[unsafe(no_mangle)]
 pub extern "C" fn CustomComparisonsEditor_into_settings(
     this: OwnedCustomComparisonsEditor,
-) -> Json {
+) -> *const c_char {
     output_str(custom::settings::write((*this).close()))
 }
 
 /// Reads the settings of the Custom Comparisons plugin and returns the
 /// comparisons in them, each as its own text, as a JSON array. If the
-/// settings can't be read, <NULL> is returned instead.
+/// settings can't be read, JSON `null` is returned instead.
 ///
 /// # Safety
 ///
@@ -99,7 +99,7 @@ pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const 
         Ok(comparisons) => output_vec(|o| {
             serde_json::to_writer(o, &comparisons).unwrap();
         }),
-        Err(_) => std::ptr::null(),
+        Err(_) => output_str("null"),
     }
 }
 
