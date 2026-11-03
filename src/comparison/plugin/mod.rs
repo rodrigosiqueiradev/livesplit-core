@@ -26,9 +26,21 @@
 pub mod abi;
 #[cfg(feature = "comparison-plugins")]
 mod wasmtime_engine;
+#[cfg(all(
+    feature = "web-comparison-plugins",
+    target_family = "wasm",
+    not(any(target_os = "wasi", target_os = "emscripten"))
+))]
+mod web_engine;
 
 #[cfg(feature = "comparison-plugins")]
 pub use self::wasmtime_engine::WasmtimeEngine;
+#[cfg(all(
+    feature = "web-comparison-plugins",
+    target_family = "wasm",
+    not(any(target_os = "wasi", target_os = "emscripten"))
+))]
+pub use self::web_engine::WebEngine;
 
 use self::abi::{
     DescribeInput, DescribeOutput, GenerateInput, GenerateOutput, HistoryEntry, Snapshot,
@@ -68,6 +80,28 @@ pub trait Engine: fmt::Debug + Send + Sync {
     fn describe(&self, input: &[u8]) -> Result<Vec<u8>, Error>;
     /// Calls `lscp_generate`.
     fn generate(&self, input: &[u8]) -> Result<Vec<u8>, Error>;
+}
+
+/// Creates an engine for the module with the best engine this build of
+/// livesplit-core has: the browser's own engine on the web, otherwise
+/// wasmtime. Fails if neither is enabled.
+pub fn engine_for(module: &[u8]) -> Result<Box<dyn Engine>, Error> {
+    cfg_select! {
+        all(
+            feature = "web-comparison-plugins",
+            target_family = "wasm",
+            not(any(target_os = "wasi", target_os = "emscripten"))
+        ) => {
+            Ok(Box::new(WebEngine::new(module)?))
+        }
+        feature = "comparison-plugins" => {
+            Ok(Box::new(WasmtimeEngine::new(module)?))
+        }
+        _ => {
+            let _ = module;
+            Err("This version of LiveSplit can't run comparison plugins.".into())
+        }
+    }
 }
 
 /// A loaded plugin with its settings.

@@ -11,7 +11,8 @@
 
 use super::{Json, output_str, output_vec, str};
 use livesplit_core::{
-    LayoutEditor, Run, TimingMethod, comparison::custom::Editor as CustomComparisonsEditor,
+    LayoutEditor, Run, TimingMethod,
+    comparison::custom::{self, Editor as CustomComparisonsEditor},
 };
 use std::os::raw::c_char;
 
@@ -52,6 +53,54 @@ pub extern "C" fn CustomComparisonsEditor_close(
     layout_editor: &mut LayoutEditor,
 ) -> bool {
     layout_editor.set_custom_comparisons((*this).close())
+}
+
+/// Creates a new Custom Comparisons Editor for the comparisons in the
+/// settings of the Custom Comparisons plugin, as an application keeps them
+/// (`{"comparisons": [...]}`). The run provides the comparisons the custom
+/// comparisons can't be named after, like the ones stored in the splits.
+/// Empty settings start an empty list. If the settings can't be read, <NULL>
+/// is returned instead.
+///
+/// # Safety
+///
+/// `settings` must be a valid string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn CustomComparisonsEditor_from_settings(
+    settings: *const c_char,
+    run: &Run,
+) -> NullableOwnedCustomComparisonsEditor {
+    // SAFETY: The caller guarantees that `settings` is valid.
+    let comparisons = custom::settings::read(unsafe { str(settings) }).ok()?;
+    Some(Box::new(CustomComparisonsEditor::new(comparisons, run)))
+}
+
+/// Closes the Custom Comparisons Editor and returns the comparisons as the
+/// settings of the Custom Comparisons plugin. This is also the file format
+/// for exporting and importing all of them at once.
+#[unsafe(no_mangle)]
+pub extern "C" fn CustomComparisonsEditor_into_settings(
+    this: OwnedCustomComparisonsEditor,
+) -> Json {
+    output_str(custom::settings::write((*this).close()))
+}
+
+/// Reads the settings of the Custom Comparisons plugin and returns the
+/// comparisons in them, each as its own text, as a JSON array. If the
+/// settings can't be read, <NULL> is returned instead.
+///
+/// # Safety
+///
+/// `settings` must be a valid string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const c_char) -> Json {
+    // SAFETY: The caller guarantees that `settings` is valid.
+    match custom::settings::read(unsafe { str(settings) }) {
+        Ok(comparisons) => output_vec(|o| {
+            serde_json::to_writer(o, &comparisons).unwrap();
+        }),
+        Err(_) => std::ptr::null(),
+    }
 }
 
 /// drop

@@ -21,38 +21,29 @@ use livesplit_core::comparison::{
     custom::{
         Evaluator, Library, format,
         run_data::{AttemptData, RunData, SegmentData},
+        settings,
     },
     plugin::abi::{
         ABI_VERSION, DescribeInput, DescribeOutput, GenerateInput, GenerateOutput, Snapshot,
         SplitTimes,
     },
 };
-use serde_derive::Deserialize;
 use std::cell::RefCell;
 use time::OffsetDateTime;
 
 /// The id that names this plugin.
-pub const ID: &str = "livesplit.custom-comparisons";
+pub const ID: &str = settings::PLUGIN_ID;
 
-#[derive(Deserialize)]
-struct Settings {
-    #[serde(default)]
-    comparisons: Vec<serde_json::Value>,
-}
-
-/// Reads the settings into a library of programs.
+/// Reads the settings into a library of programs. Comparisons that can't be
+/// read are left out, like in the desktop LiveSplit: the editor shows what is
+/// wrong with them.
 pub fn library(settings: &str) -> Result<Library, String> {
-    if settings.trim().is_empty() {
-        return Ok(Library::default());
-    }
-    let settings: Settings = serde_json::from_str(settings)
-        .map_err(|e| format!("The custom comparisons couldn't be read: {e}"))?;
-    let mut programs = Vec::new();
-    for document in settings.comparisons {
-        let document = format::read(&document.to_string()).map_err(|e| e.0)?;
-        programs.push(document.program);
-    }
-    Ok(Library::new(programs))
+    let texts = settings::read(settings)?;
+    Ok(Library::new(
+        texts
+            .iter()
+            .filter_map(|text| Some(format::read(text).ok()?.program)),
+    ))
 }
 
 /// `lscp_describe`: the names of the custom comparisons.

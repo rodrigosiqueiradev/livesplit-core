@@ -39,6 +39,7 @@ pub mod editor;
 pub mod evaluator;
 pub mod format;
 pub mod run_data;
+pub mod settings;
 
 #[cfg(test)]
 mod tests;

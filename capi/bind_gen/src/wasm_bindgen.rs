@@ -919,6 +919,38 @@ export class {class_name} extends {class_name_ref_mut} {{
     }"#
                 )?;
             }
+        } else if class_name == "ComparisonPlugin" && class.has_function("ComparisonPlugin_new") {
+            if type_script {
+                write!(
+                    writer,
+                    "{}",
+                    r#"
+    static fromArray(id: string, settings: string, module: Uint8Array): ComparisonPlugin | null {
+        const slice = allocUint8Array(module);
+        const result = ComparisonPlugin.new(id, settings, slice.ptr, slice.len);
+        dealloc(slice);
+        return result;
+    }"#
+                )?;
+            } else {
+                write!(
+                    writer,
+                    "{}",
+                    r#"
+    /**
+     * @param {string} id
+     * @param {string} settings
+     * @param {Uint8Array} module
+     * @return {ComparisonPlugin | null}
+     */
+    static fromArray(id, settings, module) {
+        const slice = allocUint8Array(module);
+        const result = ComparisonPlugin.new(id, settings, slice.ptr, slice.len);
+        dealloc(slice);
+        return result;
+    }"#
+                )?;
+            }
         } else if class_name == "Layout" {
             if type_script {
                 write!(
