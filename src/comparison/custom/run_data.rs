@@ -4,9 +4,7 @@
 //! this small, timing method specific snapshot. That keeps the evaluator free
 //! of livesplit-core's bookkeeping (comparisons stored inside the segments,
 //! `Time` holding both timing methods, negative attempt ids for imported
-//! history, ...), makes it trivial to construct runs in tests, and is exactly
-//! the shape the desktop LiveSplit component's engine uses, so the two
-//! implementations can be compared side by side.
+//! history, ...) and makes it trivial to construct runs in tests.
 
 use super::ast::Nanos;
 use crate::platform::{DateTime, prelude::*};

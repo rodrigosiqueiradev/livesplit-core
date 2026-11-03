@@ -1,19 +1,21 @@
-//! Tests for custom comparisons. Most of them are ports of the desktop
-//! component's engine tests, so both implementations are held to the same
-//! behaviour. They build [`RunData`] directly, which keeps each case short and
-//! readable; the tests at the end go through a real [`Timer`] instead, to make
-//! sure the generator is wired up correctly.
+//! Tests for custom comparisons. Most of them build [`RunData`] directly,
+//! which keeps each case short and readable; the tests at the end install the
+//! Custom Comparisons plugin on a real [`Timer`] instead, to make sure it is
+//! wired up correctly. They run the plugin's code directly rather than as
+//! WebAssembly, which `tests/comparison_plugins.rs` covers.
 
 use super::{
-    Editor, Library, Program,
+    Editor, Program,
     ast::{AggregateKind, NANOS_PER_SECOND, Nanos, PickKind, RangeCase, Samples, Times},
     check_name,
     evaluator::{ComparisonResult, Evaluator},
-    format::{self, Document},
+    exports, format,
     run_data::{AttemptData, RunData, SegmentData},
+    settings,
 };
 use crate::{
     Run, Segment, TimeSpan, Timer, TimingMethod,
+    comparison::plugin::{Engine, Error as PluginError, Plugin},
     platform::{DateTime, Duration, prelude::*},
     util::tests_helper::run_with_splits,
 };
@@ -726,22 +728,22 @@ const SAFE_PACE: &str = r#"{
     },
     "fallback": { "type": "comparison", "name": "Personal Best" }
   },
-  "workspace": { "blocks": { "languageVersion": 0 } }
+  "editor": { "collapsed": [] }
 }"#;
 
 #[test]
-fn reads_a_desktop_file_and_keeps_the_workspace() {
-    let document = format::read(SAFE_PACE).unwrap();
-    assert_eq!(document.program.name, "Safe Pace");
-    assert!(matches!(document.program.root, Times::Fallback { .. }));
-    assert!(document.workspace.is_some());
+fn reads_a_file_and_ignores_other_members() {
+    let program = format::read(SAFE_PACE).unwrap();
+    assert_eq!(program.name, "Safe Pace");
+    assert!(matches!(program.root, Times::Fallback { .. }));
+    assert!(!format::write(&program).contains("editor"));
 }
 
 #[test]
 fn round_trips_and_writes_the_lowest_version() {
-    let document = format::read(SAFE_PACE).unwrap();
-    let once = format::write(&document);
-    assert_eq!(format::read(&once).unwrap(), document);
+    let program = format::read(SAFE_PACE).unwrap();
+    let once = format::write(&program);
+    assert_eq!(format::read(&once).unwrap(), program);
     assert!(once.contains("\"version\": 1"));
     assert!(once.contains("\"seconds\": 0.5"));
     assert!(once.contains("\"count\": 10"));
@@ -763,16 +765,13 @@ fn every_version_4_block_round_trips() {
             high: Box::new(Times::BestRecentRun { days: 30 }),
         }),
     };
-    let document = Document {
-        program: Program {
-            name: "V4".into(),
-            root,
-        },
-        workspace: None,
+    let program = Program {
+        name: "V4".into(),
+        root,
     };
-    let text = format::write(&document);
+    let text = format::write(&program);
     assert!(text.contains("\"version\": 4"));
-    assert_eq!(format::read(&text).unwrap(), document);
+    assert_eq!(format::read(&text).unwrap(), program);
 }
 
 #[test]
@@ -822,15 +821,42 @@ fn newer_versions_and_other_files_are_refused() {
     );
 }
 
-// ------------------------------------------------------------------ Generator
+// ------------------------------------------------------------------ Plugin
+
+/// Runs the Custom Comparisons plugin's code directly instead of as
+/// WebAssembly, but with the same JSON going in and out.
+#[derive(Debug)]
+struct Direct;
+
+impl Engine for Direct {
+    fn describe(&self, input: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let input = serde_json::from_slice(input).unwrap();
+        Ok(serde_json::to_vec(&exports::describe(&input)).unwrap())
+    }
+
+    fn generate(&self, input: &[u8]) -> Result<Vec<u8>, PluginError> {
+        let input = serde_json::from_slice(input).unwrap();
+        Ok(serde_json::to_vec(&exports::generate(&input)).unwrap())
+    }
+}
+
+/// Installs the plugin with these programs on the run.
+fn install(programs: &[Program], run: &mut Run) -> Vec<String> {
+    let texts: Vec<String> = programs.iter().map(format::write_compact).collect();
+    Plugin::new(
+        settings::PLUGIN_ID,
+        settings::write(&texts),
+        Box::new(Direct),
+    )
+    .unwrap()
+    .install(run)
+}
 
 fn timer_with(programs: Vec<Program>) -> Timer {
     let mut run = Run::new();
     run.push_segment(Segment::new("A"));
     run.push_segment(Segment::new("B"));
-    for generator in Library::new(programs).generators() {
-        run.comparison_generators_mut().push(generator);
-    }
+    install(&programs, &mut run);
     Timer::new(run).unwrap()
 }
 
@@ -872,7 +898,7 @@ fn generator_can_use_built_ins_that_are_switched_off() {
     run_with_splits(&mut timer, &[10.0, 25.0]);
     run_with_splits(&mut timer, &[8.0, 30.0]);
 
-    // Keep only the custom generator: Best Segments is calculated anyway.
+    // Keep only the plugin's generator: Best Segments is calculated anyway.
     let mut run = timer.run().clone();
     run.comparison_generators_mut()
         .retain(|g| g.name() == "Golds +1s");
@@ -911,13 +937,10 @@ fn generator_handles_both_timing_methods() {
     );
 }
 
-// ------------------------------------------------------------------ Library
+// ------------------------------------------------------------------ Installing
 
 fn program_json(name: &str) -> String {
-    format::write(&Document {
-        program: program(name),
-        workspace: None,
-    })
+    format::write(&program(name))
 }
 
 fn program(name: &str) -> Program {
@@ -934,16 +957,12 @@ fn has_comparison(run: &Run, name: &str) -> bool {
 }
 
 #[test]
-fn library_is_installed_and_replaced() {
+fn plugin_is_installed_and_replaced() {
     let mut timer = timer_with(Vec::new());
     run_with_splits(&mut timer, &[10.0, 25.0]);
     let mut run = timer.run().clone();
 
-    assert!(
-        Library::new([program("A"), program("B")])
-            .install(&mut run)
-            .is_empty()
-    );
+    assert!(install(&[program("A"), program("B")], &mut run).is_empty());
     assert!(has_comparison(&run, "A") && has_comparison(&run, "B"));
     // Calculated right away, not only after the next attempt.
     assert_eq!(
@@ -952,22 +971,22 @@ fn library_is_installed_and_replaced() {
     );
 
     // Installing again replaces them instead of adding them twice.
-    Library::new([program("A")]).install(&mut run);
+    install(&[program("A")], &mut run);
     assert_eq!(run.comparisons().filter(|c| *c == "A").count(), 1);
     assert!(!has_comparison(&run, "B"));
 
-    Library::default().install(&mut run);
+    install(&[], &mut run);
     assert!(!has_comparison(&run, "A"));
     assert!(has_comparison(&run, "Best Segments"));
 }
 
 #[test]
-fn library_comparison_named_like_one_in_the_splits_is_left_out() {
+fn comparison_named_like_one_in_the_splits_is_left_out() {
     let timer = timer_with(Vec::new());
     let mut run = timer.run().clone();
     run.add_custom_comparison("World Record").unwrap();
 
-    let left_out = Library::new([program("World Record"), program("Mine")]).install(&mut run);
+    let left_out = install(&[program("World Record"), program("Mine")], &mut run);
     assert_eq!(left_out, ["World Record"]);
     assert!(has_comparison(&run, "Mine"));
     assert_eq!(
@@ -993,23 +1012,12 @@ fn editor_names(editor: &Editor) -> Vec<String> {
 }
 
 fn using(name: &str, uses: &str) -> String {
-    format::write_compact(&Document {
-        program: Program {
-            name: name.into(),
-            root: Times::Fallback {
-                primary: cmp(uses),
-                fallback: cmp("Personal Best"),
-            },
+    format::write_compact(&Program {
+        name: name.into(),
+        root: Times::Fallback {
+            primary: cmp(uses),
+            fallback: cmp("Personal Best"),
         },
-        workspace: Some(serde_json::json!({
-            "blocks": { "blocks": [{
-                "type": "cc_fallback",
-                "inputs": { "PRIMARY": { "block": {
-                    "type": "cc_comparison",
-                    "fields": { "NAME": uses },
-                }}},
-            }]},
-        })),
     })
 }
 
@@ -1037,7 +1045,7 @@ fn editor_adds_comparisons_with_free_names_only() {
     assert_eq!(editor.check_name("Pace", Some(0)), None);
     assert!(editor.check_name("Pace", Some(1)).is_some());
 
-    // Stored on a single line, like the desktop component stores them.
+    // Stored on a single line.
     let stored = editor.close();
     assert!(stored.iter().all(|s| !s.contains('\n')));
 }
@@ -1060,16 +1068,11 @@ fn editor_rename_updates_the_comparisons_that_use_it() {
     let stored = editor.close();
     let user = format::read(&stored[1]).unwrap();
     assert_eq!(
-        user.program.root,
+        user.root,
         Times::Fallback {
             primary: cmp("Safe"),
             fallback: cmp("Personal Best"),
         }
-    );
-    let workspace = user.workspace.unwrap();
-    assert_eq!(
-        workspace["blocks"]["blocks"][0]["inputs"]["PRIMARY"]["block"]["fields"]["NAME"],
-        "Safe"
     );
     // Comparisons that don't use it stay exactly as they were.
     assert_eq!(stored[2], unrelated);

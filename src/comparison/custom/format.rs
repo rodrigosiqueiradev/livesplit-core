@@ -1,29 +1,26 @@
 //! Reads and writes the custom comparison file format.
 //!
-//! This is the same versioned JSON format the desktop LiveSplit component
-//! uses, so a comparison can be shared between both:
+//! A custom comparison is stored, exported and shared as a small versioned
+//! JSON document:
 //!
 //! ```json
 //! {
 //!   "format": "livesplit-custom-comparison",
 //!   "version": 1,
 //!   "name": "Safe Pace",
-//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } },
-//!   "workspace": { ... }
+//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } }
 //! }
 //! ```
 //!
 //! A file is pure data: it can only describe blocks from the fixed set in
-//! [`ast`](super::ast). `workspace` is the desktop block editor's own layout
-//! and is only kept so the file can be opened there again as it was; it is
-//! never evaluated.
+//! [`ast`](super::ast). Other members are ignored.
 //!
 //! Files are written with the *lowest* version that can hold their blocks, so
 //! comparisons that don't use newer blocks still open in older releases. Every
 //! value is validated while reading, and every error names the place it
 //! happened, like `root.source.count: must be a whole number from 1 to 10000.`,
 //! because these messages are shown to runners who are editing or importing a
-//! comparison. They match the desktop component's messages word for word.
+//! comparison.
 
 use super::ast::{
     AggregateKind, NANOS_PER_SECOND, Nanos, PickKind, Program, RangeCase, Samples, Times,
@@ -62,16 +59,6 @@ pub const MAX_SCALE_PERCENT: f64 = 1000.0;
 /// The largest share the trim block may drop from each end.
 pub const MAX_TRIM_PERCENT: f64 = 45.0;
 
-/// A program plus the desktop editor's layout that belongs to it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Document {
-    /// The comparison.
-    pub program: Program,
-    /// The desktop block editor's layout (block positions and so on). Kept
-    /// as is, never evaluated. `None` for files without one.
-    pub workspace: Option<Value>,
-}
-
 /// A file that can't be read. The message is meant for the runner.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatError(pub String);
@@ -88,29 +75,23 @@ type Result<T> = core::result::Result<T, FormatError>;
 
 // ------------------------------------------------------------------ Writing
 
-/// Writes a document as indented JSON, the way files are exported.
-pub fn write(document: &Document) -> String {
-    serde_json::to_string_pretty(&to_value(document)).expect("A JSON value can always be written")
+/// Writes a comparison as indented JSON, the way files are exported.
+pub fn write(program: &Program) -> String {
+    serde_json::to_string_pretty(&to_value(program)).expect("A JSON value can always be written")
 }
 
-/// Writes a document as JSON on a single line, the way comparisons are stored
-/// in a layout and copied to the clipboard, so chat apps don't mangle them.
-pub fn write_compact(document: &Document) -> String {
-    serde_json::to_string(&to_value(document)).expect("A JSON value can always be written")
+/// Writes a comparison as JSON on a single line, the way comparisons are
+/// stored and copied to the clipboard, so chat apps don't mangle them.
+pub fn write_compact(program: &Program) -> String {
+    serde_json::to_string(&to_value(program)).expect("A JSON value can always be written")
 }
 
-fn to_value(document: &Document) -> Value {
+fn to_value(program: &Program) -> Value {
     let mut root = Map::new();
     root.insert("format".into(), FORMAT_ID.into());
-    root.insert(
-        "version".into(),
-        required_version(&document.program.root).into(),
-    );
-    root.insert("name".into(), document.program.name.as_str().into());
-    root.insert("root".into(), write_times(&document.program.root));
-    if let Some(workspace) = &document.workspace {
-        root.insert("workspace".into(), workspace.clone());
-    }
+    root.insert("version".into(), required_version(&program.root).into());
+    root.insert("name".into(), program.name.as_str().into());
+    root.insert("root".into(), write_times(&program.root));
     Value::Object(root)
 }
 
@@ -120,7 +101,7 @@ fn typed(type_name: &str) -> Map<String, Value> {
     map
 }
 
-/// Seconds, rounded to milliseconds like the desktop component writes them.
+/// Seconds, rounded to milliseconds.
 fn seconds(nanos: Nanos) -> Value {
     let millis = libm::round(nanos as f64 / 1_000_000.0);
     number(millis / 1000.0)
@@ -339,7 +320,7 @@ fn samples_version(node: &Samples) -> u32 {
 // ------------------------------------------------------------------ Reading
 
 /// Reads a comparison file. Errors are meant for the runner.
-pub fn read(text: &str) -> Result<Document> {
+pub fn read(text: &str) -> Result<Program> {
     let json: Value = serde_json::from_str(text)
         .map_err(|e| FormatError(format!("This isn't valid JSON: {e}")))?;
 
@@ -367,12 +348,10 @@ pub fn read(text: &str) -> Result<Document> {
         )));
     }
 
-    let program = Program {
+    Ok(Program {
         name: name.trim().to_string(),
         root: read_times(required(root, "root", "")?, "root")?,
-    };
-    let workspace = root.get("workspace").filter(|w| !w.is_null()).cloned();
-    Ok(Document { program, workspace })
+    })
 }
 
 const LIST_TYPES: &[&str] = &[
@@ -652,8 +631,7 @@ fn error(path: &str, key: &str, problem: &str) -> FormatError {
     FormatError(format!("{}: {problem}.", join(path, key)))
 }
 
-/// Formats a limit like the desktop component: up to three decimals, no
-/// trailing zeros.
+/// Formats a limit with up to three decimals and no trailing zeros.
 fn fmt_number(value: f64) -> String {
     let text = format!("{value:.3}");
     let text = text.trim_end_matches('0').trim_end_matches('.');

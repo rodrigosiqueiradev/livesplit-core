@@ -1,5 +1,5 @@
 //! Runs the Custom Comparisons plugin through wasmtime and checks that it
-//! calculates exactly what the built-in custom comparisons engine does.
+//! calculates exactly what its code does when it runs directly.
 
 #![cfg(feature = "comparison-plugins")]
 
@@ -8,8 +8,8 @@ mod run_files;
 use livesplit_core::{
     Run, TimingMethod,
     comparison::{
-        custom::{Library, format},
-        plugin::{Engine, Plugin, WasmtimeEngine},
+        custom::exports,
+        plugin::{Engine, Error, Plugin, WasmtimeEngine},
     },
     run::parser::livesplit,
 };
@@ -47,6 +47,22 @@ fn plugin_wasm() -> &'static [u8] {
 
 fn engine() -> Box<dyn Engine> {
     Box::new(WasmtimeEngine::new(plugin_wasm()).unwrap())
+}
+
+/// Runs the plugin's code directly instead of as WebAssembly.
+#[derive(Debug)]
+struct Direct;
+
+impl Engine for Direct {
+    fn describe(&self, input: &[u8]) -> Result<Vec<u8>, Error> {
+        let input = serde_json::from_slice(input).unwrap();
+        Ok(serde_json::to_vec(&exports::describe(&input)).unwrap())
+    }
+
+    fn generate(&self, input: &[u8]) -> Result<Vec<u8>, Error> {
+        let input = serde_json::from_slice(input).unwrap();
+        Ok(serde_json::to_vec(&exports::generate(&input)).unwrap())
+    }
 }
 
 const SAFE_PACE: &str = r#"{
@@ -117,10 +133,11 @@ fn describes_the_comparisons() {
 }
 
 #[test]
-fn matches_the_built_in_engine() {
+fn matches_running_the_code_directly() {
     let mut expected = celeste();
-    let programs = DOCUMENTS.iter().map(|d| format::read(d).unwrap().program);
-    Library::new(programs).install(&mut expected);
+    Plugin::new(ID, settings(), Box::new(Direct))
+        .unwrap()
+        .install(&mut expected);
 
     let mut actual = celeste();
     let plugin = Plugin::new(ID, settings(), engine()).unwrap();

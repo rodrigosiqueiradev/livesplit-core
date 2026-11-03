@@ -1,19 +1,17 @@
 //! The Custom Comparisons Editor edits the custom comparisons kept in the
-//! settings of the Custom Comparisons plugin. It follows the same rules as the
-//! desktop LiveSplit component Custom Comparisons: names are unique (ignoring
+//! settings of the Custom Comparisons plugin. Names are unique (ignoring
 //! case) and can't be one of LiveSplit's own comparisons or one the run
 //! already has, a comparison that can't be read is kept exactly as it is, and
 //! renaming a comparison updates the other comparisons that use it.
 //!
-//! Comparisons are imported and exported in the JSON format shared with the
-//! desktop component. Functions that can fail return an empty string on
+//! Comparisons are imported and exported in the custom comparison JSON
+//! format. Functions that can fail return an empty string on
 //! success and otherwise a message meant for the runner.
 
 use super::{Json, output_str, output_vec, str};
 use livesplit_core::{
     Run, TimingMethod,
     comparison::custom::{self, Editor as CustomComparisonsEditor},
-    layout::parser,
 };
 use std::os::raw::c_char;
 
@@ -72,23 +70,6 @@ pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const 
         }),
         Err(_) => output_str("null"),
     }
-}
-
-/// Reads the custom comparisons stored in a layout file of the desktop
-/// LiveSplit (`.lsl`) by its Custom Comparisons component, and returns them
-/// as the settings of the Custom Comparisons plugin. Comparisons that can't
-/// be read are included as they are. If the file can't be read as a layout,
-/// an empty string is returned instead.
-///
-/// # Safety
-///
-/// `layout` must be a valid string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CustomComparisonsEditor_read_layout(
-    layout: *const c_char,
-) -> *const c_char {
-    // SAFETY: The caller guarantees that `layout` is valid.
-    output_str(parser::custom_comparisons_settings(unsafe { str(layout) }).unwrap_or_default())
 }
 
 /// drop
