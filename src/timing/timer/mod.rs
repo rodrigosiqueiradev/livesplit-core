@@ -4,7 +4,7 @@ use crate::{
     TimerPhase::{self, *},
     TimingMethod,
     analysis::check_best_segment,
-    comparison::{custom::Library, personal_best},
+    comparison::{custom::Library, personal_best, plugin::Plugin},
     event::{Error, Event},
     platform::prelude::*,
     util::PopulateString,
@@ -297,6 +297,34 @@ impl Timer {
             .as_ref()?
             .current_split_index()
             .map(|i| self.run.segment(i))
+    }
+
+    /// Installs a comparison plugin on the run, replacing the comparisons an
+    /// earlier version of the same plugin installed. The current attempt is
+    /// kept. If the current comparison no longer exists, the timer switches to
+    /// the Personal Best. Returns the names of the plugin's comparisons that
+    /// weren't installed because the run already has a comparison with that
+    /// name.
+    pub fn install_comparison_plugin(&mut self, plugin: &Plugin) -> Vec<String> {
+        let left_out = plugin.install(&mut self.run);
+        self.fix_current_comparison();
+        left_out
+    }
+
+    /// Removes the comparisons the plugin with this id installed on the run.
+    /// If the current comparison no longer exists, the timer switches to the
+    /// Personal Best.
+    pub fn remove_comparison_plugin(&mut self, id: &str) {
+        self.run
+            .comparison_generators_mut()
+            .retain(|g| g.as_plugin().is_none_or(|p| p.plugin().id() != id));
+        self.fix_current_comparison();
+    }
+
+    fn fix_current_comparison(&mut self) {
+        if !self.run.comparisons().any(|c| c == self.current_comparison) {
+            self.current_comparison = personal_best::NAME.to_string();
+        }
     }
 
     /// Accesses the index of the split the attempt is currently on. If there's

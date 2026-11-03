@@ -195,3 +195,53 @@ fn rejects_modules_that_arent_plugins() {
         "{error}"
     );
 }
+
+#[test]
+fn timer_installs_and_removes_the_plugin() {
+    use livesplit_core::{Timer, comparison::personal_best};
+
+    let mut timer = Timer::new(celeste()).unwrap();
+    let plugin = Plugin::new(ID, settings(), engine()).unwrap();
+    assert!(timer.install_comparison_plugin(&plugin).is_empty());
+    timer.set_current_comparison("Safe Pace").unwrap();
+
+    timer.remove_comparison_plugin(ID);
+    assert!(!timer.run().comparisons().any(|c| c == "Safe Pace"));
+    assert_eq!(timer.current_comparison(), personal_best::NAME);
+}
+
+#[test]
+fn the_editor_can_rename_comparisons_the_plugin_installed() {
+    use livesplit_core::comparison::custom::{Editor, settings};
+
+    let mut run = celeste();
+    Plugin::new(ID, settings(), engine())
+        .unwrap()
+        .install(&mut run);
+    let texts = settings::read(&settings()).unwrap();
+    let editor = Editor::new(texts, &run);
+    // The plugin's own comparisons don't block their names.
+    assert_eq!(editor.check_name("Safe Pace", Some(0)), None);
+    assert!(editor.check_name("Best Segments", None).is_some());
+    assert_eq!(
+        settings::read(&settings::write(editor.close()))
+            .unwrap()
+            .len(),
+        4
+    );
+}
+
+#[test]
+fn comparisons_are_taken_over_from_a_layout() {
+    use livesplit_core::{Layout, comparison::custom::settings, component::custom_comparisons};
+
+    let mut layout = Layout::new();
+    let mut component = custom_comparisons::Component::new();
+    component.settings_mut().comparisons = vec![SAFE_PACE.into(), "broken {".into()];
+    layout.push(component);
+
+    let texts = settings::read(&layout.custom_comparisons_settings()).unwrap();
+    assert_eq!(texts.len(), 2);
+    assert_eq!(format::read(&texts[0]).unwrap().program.name, "Safe Pace");
+    assert_eq!(texts[1], "broken {");
+}

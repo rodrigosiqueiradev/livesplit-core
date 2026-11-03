@@ -15,6 +15,5 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 livesplit-core = { path = "../..", default-features = false }
 serde = { version = "1.0.186", default-features = false, features = ["alloc"] }
-serde_derive = "1.0.186"
 serde_json = { version = "1.0.60", default-features = false, features = ["alloc"] }
 time = { version = "0.3.47", default-features = false }

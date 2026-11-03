@@ -43,6 +43,8 @@ pub mod carousel_component;
 pub mod carousel_component_state;
 #[cfg(feature = "command-sink")]
 pub mod command_sink;
+#[cfg(feature = "comparison-plugin")]
+pub mod comparison_plugin;
 #[cfg(feature = "component")]
 pub mod component;
 #[cfg(feature = "current-comparison-component")]

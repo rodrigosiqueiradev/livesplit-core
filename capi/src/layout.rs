@@ -1,7 +1,7 @@
 //! A Layout allows you to combine multiple components together to visualize a
 //! variety of information the runner is interested in.
 
-use super::{Json, get_file, output_vec, str};
+use super::{Json, get_file, output_str, output_vec, str};
 use crate::{component::OwnedComponent, layout_state::OwnedLayoutState, slice};
 use livesplit_core::{
     Lang, Layout, Timer,
@@ -28,6 +28,15 @@ pub extern "C" fn Layout_new() -> OwnedLayout {
 #[unsafe(no_mangle)]
 pub extern "C" fn Layout_default_layout(lang: Lang) -> OwnedLayout {
     Box::new(Layout::default_layout(lang))
+}
+
+/// The text of every custom comparison stored in the layout's Custom
+/// Comparisons components, as the settings of the Custom Comparisons plugin
+/// (`{"comparisons": [...]}`). Use it to take over the comparisons of a
+/// layout, like one made with the desktop LiveSplit.
+#[unsafe(no_mangle)]
+pub extern "C" fn Layout_custom_comparisons_settings(this: &Layout) -> Json {
+    output_str(this.custom_comparisons_settings())
 }
 
 /// drop

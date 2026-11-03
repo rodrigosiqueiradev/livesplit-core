@@ -183,7 +183,11 @@ impl Editor {
         let custom: Vec<&str> = run
             .comparison_generators()
             .iter()
-            .filter(|g| g.as_custom().is_some())
+            .filter(|g| {
+                g.as_custom().is_some()
+                    || g.as_plugin()
+                        .is_some_and(|p| p.plugin().id() == super::settings::PLUGIN_ID)
+            })
             .map(|g| g.name())
             .collect();
         let other_comparisons = run

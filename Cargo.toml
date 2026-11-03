@@ -190,6 +190,7 @@ wasm-web = [
 ]
 auto-splitting = ["std", "livesplit-auto-splitting", "arc-swap", "log"]
 comparison-plugins = ["std", "wasmtime"]
+web-comparison-plugins = ["wasm-web"]
 networking = ["std", "reqwest"]
 speedrun-com = ["networking"]
 therun-gg = ["networking", "time/formatting"]
