@@ -26,7 +26,6 @@ use core::{fmt, mem::MaybeUninit, num::ParseIntError, str};
 mod blank_space;
 mod current_comparison;
 mod current_pace;
-mod custom_comparisons;
 mod delta;
 mod detailed_timer;
 mod graph;
@@ -675,9 +674,6 @@ where
                         current_comparison::Component::new().into()
                     }
                     "LiveSplit.RunPrediction.dll" => current_pace::Component::new().into(),
-                    "LiveSplit.CustomComparisons.dll" => {
-                        custom_comparisons::Component::new().into()
-                    }
                     "LiveSplit.Delta.dll" => delta::Component::new().into(),
                     "LiveSplit.DetailedTimer.dll" => {
                         Box::new(detailed_timer::Component::new()).into()
@@ -707,7 +703,6 @@ where
                         Component::BlankSpace(c) => blank_space::settings(reader, c),
                         Component::CurrentComparison(c) => current_comparison::settings(reader, c),
                         Component::CurrentPace(c) => current_pace::settings(reader, c),
-                        Component::CustomComparisons(c) => custom_comparisons::settings(reader, c),
                         Component::Delta(c) => delta::settings(reader, c),
                         Component::DetailedTimer(c) => detailed_timer::settings(reader, c),
                         Component::Graph(c) => graph::settings(reader, c),

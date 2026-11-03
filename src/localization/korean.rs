@@ -649,7 +649,6 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "빈 공간",
         Text::ComponentCurrentComparison => "현재 비교",
         Text::ComponentCurrentPace => "현재 페이스",
-        Text::ComponentCustomComparisons => "사용자 지정 비교",
         Text::ComponentDelta => "차이",
         Text::ComponentDetailedTimer => "상세 타이머",
         Text::ComponentGraph => "그래프",

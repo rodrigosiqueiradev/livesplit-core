@@ -2,25 +2,27 @@
 //!
 //! A custom comparison is a small program, like "the median of my last 10
 //! finished runs, never faster than my golds, gaps filled from my PB". It is
-//! pure data: a tree of blocks from a fixed set ([`ast`]), stored in a
-//! versioned JSON format ([`format`]) that is shared with the desktop
-//! LiveSplit component *Custom Comparisons*, so the same file works in both.
+//! pure data: a tree of blocks from a fixed set ([`ast`]), stored in a small
+//! versioned JSON format ([`format`]).
 //!
 //! # How it fits into livesplit-core
 //!
-//! Each custom comparison becomes one [`CustomComparison`] comparison
-//! generator. Like the built-in generators, it recalculates its comparison
-//! between attempts, for both timing methods. All the custom comparisons of a
-//! run share one [`Library`], because a program may use another custom
-//! comparison as an input. Those references are resolved by evaluating the
-//! other program directly (with loop detection), never by reading back what
-//! another generator wrote, so the order of the generators doesn't matter.
+//! Custom comparisons are calculated by the Custom Comparisons comparison
+//! plugin (see [`plugin`](super::plugin)), a WebAssembly module built from
+//! the crate `livesplit-custom-comparisons-plugin`. What it does when it is
+//! called lives in [`exports`]. Its settings are the runner's list of
+//! comparisons ([`settings`]), which the [`Editor`] manages.
+//!
+//! All the custom comparisons are evaluated together by one [`Evaluator`],
+//! because a program may use another custom comparison as an input. Those
+//! references are resolved by evaluating the other program directly (with
+//! loop detection), never by reading back what another generator wrote, so
+//! the order of the generators doesn't matter.
 //!
 //! Programs may also use the built-in generated comparisons (Best Segments,
-//! Average Segments, ...). Those are calculated on a copy of the segments
-//! when needed, so they work even if the runner removed those generators
-//! from their run, which is exactly what someone relying solely on custom
-//! comparisons would do.
+//! Average Segments, ...). Those are always provided, even if the runner
+//! removed those generators from their run, which is exactly what someone
+//! relying solely on custom comparisons would do.
 //!
 //! # Rules
 //!
@@ -37,8 +39,10 @@
 pub mod ast;
 pub mod editor;
 pub mod evaluator;
+pub mod exports;
 pub mod format;
 pub mod run_data;
+pub mod settings;
 
 #[cfg(test)]
 mod tests;
@@ -47,23 +51,22 @@ pub use self::{
     ast::Program,
     editor::Editor,
     evaluator::{ComparisonResult, Evaluator},
-    format::{Document, FormatError},
+    format::FormatError,
 };
 
 use self::{
     ast::Nanos,
     run_data::{AttemptData, RunData, SegmentData},
 };
-use super::{ComparisonGenerator, default_generators, personal_best};
+use super::{default_generators, personal_best};
 use crate::{
-    AtomicDateTime, Attempt, Run, Segment, TimeSpan, TimingMethod,
-    platform::{Arc, DateTime, prelude::*},
+    AtomicDateTime, Attempt, Segment, TimeSpan, TimingMethod,
+    platform::{DateTime, prelude::*},
 };
 use alloc::collections::{BTreeMap, BTreeSet};
 
 /// The comparisons LiveSplit generates itself, which custom comparisons can
-/// use but not be named after. Golf HCP is included because the desktop
-/// LiveSplit offers it, and a file made there must not clash with it.
+/// use but not be named after.
 pub const RESERVED_NAMES: &[&str] = &[
     personal_best::NAME,
     super::none::NAME,
@@ -74,7 +77,6 @@ pub const RESERVED_NAMES: &[&str] = &[
     super::worst_segments::NAME,
     super::balanced_pb::NAME,
     super::latest_run::NAME,
-    "Golf HCP",
 ];
 
 /// Checks whether `name` can be used for a new custom comparison. Returns a
@@ -111,8 +113,8 @@ pub fn check_name<'a>(name: &str, taken: impl IntoIterator<Item = &'a str>) -> O
     None
 }
 
-/// Whether two comparison names are the same. Like the desktop LiveSplit, this
-/// ignores surrounding spaces and case, because two comparisons that only
+/// Whether two comparison names are the same. This ignores surrounding
+/// spaces and case, because two comparisons that only
 /// differ in case can't be told apart in the list of comparisons.
 pub fn same_name(a: &str, b: &str) -> bool {
     let (a, b) = (a.trim(), b.trim());
@@ -145,46 +147,6 @@ impl Library {
     /// The program with the given name, if any.
     pub fn get(&self, name: &str) -> Option<&Program> {
         self.programs.iter().find(|p| p.name == name)
-    }
-
-    /// Creates one comparison generator per program. Add them to a run's
-    /// comparison generators to make the comparisons available.
-    pub fn generators(self) -> Vec<Box<dyn ComparisonGenerator>> {
-        let library = Arc::new(self);
-        library
-            .programs
-            .iter()
-            .map(|p| {
-                Box::new(CustomComparison {
-                    name: p.name.clone(),
-                    library: library.clone(),
-                }) as Box<dyn ComparisonGenerator>
-            })
-            .collect()
-    }
-
-    /// Replaces the custom comparisons installed on the run with the ones in
-    /// this library and calculates them. A program named like a comparison
-    /// the run already has, like a comparison stored in the splits, isn't
-    /// installed, just like in the desktop LiveSplit. The names of the
-    /// programs left out are returned. Other programs can still use them.
-    pub fn install(self, run: &mut Run) -> Vec<String> {
-        run.comparison_generators_mut()
-            .retain(|g| g.as_custom().is_none());
-
-        let taken: Vec<String> = run.comparisons().map(String::from).collect();
-        let mut left_out = Vec::new();
-        for generator in self.generators() {
-            let name = generator.name();
-            if check_name(name, taken.iter().map(String::as_str)).is_some() {
-                left_out.push(name.to_string());
-            } else {
-                run.comparison_generators_mut().push(generator);
-            }
-        }
-
-        run.regenerate_comparisons();
-        left_out
     }
 
     /// Names of comparisons the programs use that aren't part of the library
@@ -240,54 +202,11 @@ fn collect_references(node: &ast::Times, names: &mut BTreeSet<String>) {
     }
 }
 
-/// The comparison generator for one custom comparison.
-#[derive(Clone, Debug)]
-pub struct CustomComparison {
-    name: String,
-    library: Arc<Library>,
-}
-
-impl CustomComparison {
-    /// The library this comparison belongs to. It holds all the custom
-    /// comparisons installed together with this one.
-    pub fn library(&self) -> &Library {
-        &self.library
-    }
-}
-
-impl ComparisonGenerator for CustomComparison {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn as_custom(&self) -> Option<&CustomComparison> {
-        Some(self)
-    }
-
-    fn generate(&mut self, segments: &mut [Segment], attempts: &[Attempt]) {
-        let now = AtomicDateTime::now().time;
-        let evaluator = Evaluator::new(self.library.programs());
-        let references = self.library.external_references();
-        let mut built_ins = BuiltIns::default();
-
-        for method in [TimingMethod::RealTime, TimingMethod::GameTime] {
-            let run = run_data(segments, attempts, method, now, &references, &mut built_ins);
-            let splits = match evaluator.evaluate(&self.name, &run) {
-                Some(result) => result.split_times,
-                None => vec![None; segments.len()],
-            };
-            for (segment, split) in segments.iter_mut().zip(splits) {
-                segment.comparison_mut(&self.name)[method] = split.map(from_nanos);
-            }
-        }
-    }
-}
-
-/// Evaluates a custom comparison for the editor's preview: like the
-/// generator, but returns the segment times, the origin of each time and any
+/// Evaluates a custom comparison for the editor's preview: like the plugin,
+/// but returns the segment times, the origin of each time and any
 /// error instead of storing the split times in the run. `library` should
 /// contain the program being edited (under `name`) along with the run's other
-/// custom comparisons. Unlike the generator, a comparison that doesn't exist
+/// custom comparisons. Unlike the plugin, a comparison that doesn't exist
 /// in the run is reported as an error, so the editor can point at it.
 pub fn preview(
     library: &Library,
@@ -341,10 +260,6 @@ fn to_nanos(time: TimeSpan) -> Nanos {
     duration
         .whole_nanoseconds()
         .clamp(i128::from(Nanos::MIN), i128::from(Nanos::MAX)) as Nanos
-}
-
-fn from_nanos(nanos: Nanos) -> TimeSpan {
-    TimeSpan::from(crate::platform::Duration::nanoseconds(nanos))
 }
 
 /// Takes the snapshot of the run the evaluator works on.

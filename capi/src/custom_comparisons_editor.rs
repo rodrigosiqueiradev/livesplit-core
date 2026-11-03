@@ -1,17 +1,17 @@
-//! The Custom Comparisons Editor edits the custom comparisons stored in a
-//! layout's Custom Comparisons Component. It follows the same rules as the
-//! desktop LiveSplit component Custom Comparisons: names are unique (ignoring
+//! The Custom Comparisons Editor edits the custom comparisons kept in the
+//! settings of the Custom Comparisons plugin. Names are unique (ignoring
 //! case) and can't be one of LiveSplit's own comparisons or one the run
 //! already has, a comparison that can't be read is kept exactly as it is, and
 //! renaming a comparison updates the other comparisons that use it.
 //!
-//! Comparisons are imported and exported in the JSON format shared with the
-//! desktop component. Functions that can fail return an empty string on
+//! Comparisons are imported and exported in the custom comparison JSON
+//! format. Functions that can fail return an empty string on
 //! success and otherwise a message meant for the runner.
 
 use super::{Json, output_str, output_vec, str};
 use livesplit_core::{
-    LayoutEditor, Run, TimingMethod, comparison::custom::Editor as CustomComparisonsEditor,
+    Run, TimingMethod,
+    comparison::custom::{self, Editor as CustomComparisonsEditor},
 };
 use std::os::raw::c_char;
 
@@ -24,34 +24,52 @@ fn result(result: Result<(), String>) -> *const c_char {
     output_str(result.err().unwrap_or_default())
 }
 
-/// Creates a new Custom Comparisons Editor for the comparisons stored in the
-/// component selected in the Layout Editor. The run provides the comparisons
-/// the custom comparisons can't be named after, like the ones stored in the
-/// splits. If the selected component isn't a Custom Comparisons Component,
-/// <NULL> is returned instead.
+/// Creates a new Custom Comparisons Editor for the comparisons in the
+/// settings of the Custom Comparisons plugin, as an application keeps them
+/// (`{"comparisons": [...]}`). The run provides the comparisons the custom
+/// comparisons can't be named after, like the ones stored in the splits.
+/// Empty settings start an empty list. If the settings can't be read, <NULL>
+/// is returned instead.
+///
+/// # Safety
+///
+/// `settings` must be a valid string.
 #[unsafe(no_mangle)]
-pub extern "C" fn CustomComparisonsEditor_new(
-    layout_editor: &LayoutEditor,
+pub unsafe extern "C" fn CustomComparisonsEditor_from_settings(
+    settings: *const c_char,
     run: &Run,
 ) -> NullableOwnedCustomComparisonsEditor {
-    let comparisons = layout_editor.custom_comparisons()?;
-    Some(Box::new(CustomComparisonsEditor::new(
-        comparisons.iter().cloned(),
-        run,
-    )))
+    // SAFETY: The caller guarantees that `settings` is valid.
+    let comparisons = custom::settings::read(unsafe { str(settings) }).ok()?;
+    Some(Box::new(CustomComparisonsEditor::new(comparisons, run)))
 }
 
-/// Closes the Custom Comparisons Editor and stores the comparisons in the
-/// component selected in the Layout Editor. Returns whether they were stored,
-/// which they aren't if the selected component isn't a Custom Comparisons
-/// Component anymore. In case you want to implement a Cancel Button, just
-/// drop the editor instead.
+/// Closes the Custom Comparisons Editor and returns the comparisons as the
+/// settings of the Custom Comparisons plugin. This is also the file format
+/// for exporting and importing all of them at once.
 #[unsafe(no_mangle)]
-pub extern "C" fn CustomComparisonsEditor_close(
+pub extern "C" fn CustomComparisonsEditor_into_settings(
     this: OwnedCustomComparisonsEditor,
-    layout_editor: &mut LayoutEditor,
-) -> bool {
-    layout_editor.set_custom_comparisons((*this).close())
+) -> *const c_char {
+    output_str(custom::settings::write((*this).close()))
+}
+
+/// Reads the settings of the Custom Comparisons plugin and returns the
+/// comparisons in them, each as its own text, as a JSON array. If the
+/// settings can't be read, JSON `null` is returned instead.
+///
+/// # Safety
+///
+/// `settings` must be a valid string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn CustomComparisonsEditor_read_settings(settings: *const c_char) -> Json {
+    // SAFETY: The caller guarantees that `settings` is valid.
+    match custom::settings::read(unsafe { str(settings) }) {
+        Ok(comparisons) => output_vec(|o| {
+            serde_json::to_writer(o, &comparisons).unwrap();
+        }),
+        Err(_) => output_str("null"),
+    }
 }
 
 /// drop

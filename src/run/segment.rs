@@ -70,6 +70,13 @@ impl Segment {
         self.icon = image;
     }
 
+    /// Accesses the comparison times stored in the Segment. This includes
+    /// both the custom comparisons and the generated ones.
+    #[inline]
+    pub const fn comparisons(&self) -> &Comparisons {
+        &self.comparisons
+    }
+
     /// Grants mutable access to the comparison times stored in the Segment.
     /// This includes both the custom comparisons and the generated ones.
     #[inline]

@@ -1,9 +1,9 @@
 use super::{ComponentSettings, ComponentState, GeneralSettings, LayoutDirection};
 use crate::{
     component::{
-        blank_space, carousel, current_comparison, current_pace, custom_comparisons, delta,
-        detailed_timer, graph, group, pb_chance, possible_time_save, previous_segment,
-        segment_time, separator, splits, sum_of_best, text, timer, title, total_playtime,
+        blank_space, carousel, current_comparison, current_pace, delta, detailed_timer, graph,
+        group, pb_chance, possible_time_save, previous_segment, segment_time, separator, splits,
+        sum_of_best, text, timer, title, total_playtime,
     },
     localization::Lang,
     platform::prelude::*,
@@ -22,8 +22,6 @@ pub enum Component {
     CurrentComparison(current_comparison::Component),
     /// The Current Pace Component.
     CurrentPace(current_pace::Component),
-    /// The Custom Comparisons Component.
-    CustomComparisons(custom_comparisons::Component),
     /// The Delta Component.
     Delta(delta::Component),
     /// The Detailed Timer Component.
@@ -75,12 +73,6 @@ impl From<current_comparison::Component> for Component {
 impl From<current_pace::Component> for Component {
     fn from(component: current_pace::Component) -> Self {
         Self::CurrentPace(component)
-    }
-}
-
-impl From<custom_comparisons::Component> for Component {
-    fn from(component: custom_comparisons::Component) -> Self {
-        Self::CustomComparisons(component)
     }
 }
 
@@ -224,9 +216,6 @@ impl Component {
             (ComponentState::KeyValue(state), Component::CurrentPace(component)) => {
                 component.update_state(state, timer, lang)
             }
-            (ComponentState::BlankSpace(state), Component::CustomComparisons(component)) => {
-                component.update_state(state)
-            }
             (ComponentState::KeyValue(state), Component::Delta(component)) => {
                 component.update_state(state, timer, layout_settings, lang)
             }
@@ -304,9 +293,6 @@ impl Component {
             Component::CurrentPace(component) => {
                 ComponentState::KeyValue(component.state(timer, lang))
             }
-            Component::CustomComparisons(component) => {
-                ComponentState::BlankSpace(component.state())
-            }
             Component::Delta(component) => {
                 ComponentState::KeyValue(component.state(timer, layout_settings, lang))
             }
@@ -369,9 +355,6 @@ impl Component {
             Component::CurrentPace(component) => {
                 ComponentSettings::CurrentPace(component.settings().clone())
             }
-            Component::CustomComparisons(component) => {
-                ComponentSettings::CustomComparisons(component.settings().clone())
-            }
             Component::Delta(component) => ComponentSettings::Delta(component.settings().clone()),
             Component::DetailedTimer(component) => {
                 ComponentSettings::DetailedTimer(Box::new(component.settings().clone()))
@@ -414,7 +397,6 @@ impl Component {
             Component::BlankSpace(component) => Cow::Borrowed(component.name(lang)),
             Component::CurrentComparison(component) => Cow::Borrowed(component.name(lang)),
             Component::CurrentPace(component) => component.name(lang),
-            Component::CustomComparisons(component) => Cow::Borrowed(component.name(lang)),
             Component::Delta(component) => component.name(lang),
             Component::DetailedTimer(component) => Cow::Borrowed(component.name(lang)),
             Component::Graph(component) => component.name(lang),
@@ -469,7 +451,6 @@ impl Component {
             Component::BlankSpace(component) => component.settings_description(lang),
             Component::CurrentComparison(component) => component.settings_description(lang),
             Component::CurrentPace(component) => component.settings_description(lang),
-            Component::CustomComparisons(component) => component.settings_description(lang),
             Component::Delta(component) => component.settings_description(lang),
             Component::DetailedTimer(component) => component.settings_description(lang),
             Component::Graph(component) => component.settings_description(lang),
@@ -504,7 +485,6 @@ impl Component {
             Component::BlankSpace(component) => component.set_value(index, value),
             Component::CurrentComparison(component) => component.set_value(index, value),
             Component::CurrentPace(component) => component.set_value(index, value),
-            Component::CustomComparisons(component) => component.set_value(index, value),
             Component::Delta(component) => component.set_value(index, value),
             Component::DetailedTimer(component) => component.set_value(index, value),
             Component::Graph(component) => component.set_value(index, value),

@@ -1,13 +1,9 @@
 //! A Timer provides all the capabilities necessary for doing speedrun attempts.
 
-#[cfg(feature = "layout")]
-use super::Json;
 use super::{output_str, output_time, output_time_span, output_vec, str};
 use crate::run::{NullableOwnedRun, OwnedRun};
 #[cfg(feature = "shared-timer")]
 use crate::shared_timer::OwnedSharedTimer;
-#[cfg(feature = "layout")]
-use livesplit_core::Layout;
 use livesplit_core::{
     Run, Time, TimeSpan, Timer, TimerPhase, TimingMethod,
     event::{Error, Event},
@@ -100,28 +96,6 @@ pub unsafe extern "C" fn Timer_replace_run(
 #[unsafe(no_mangle)]
 pub extern "C" fn Timer_set_run(this: &mut Timer, run: OwnedRun) -> NullableOwnedRun {
     this.set_run(*run).err().map(Box::new)
-}
-
-/// Installs the custom comparisons stored in the layout's Custom Comparisons
-/// Components on the run, replacing the ones installed before. Call this
-/// whenever the layout or the run changes. The current attempt is kept. If the
-/// current comparison no longer exists, the timer switches to the Personal
-/// Best. Returns the names of the comparisons that weren't installed because
-/// the run already has a comparison with that name, as a JSON array.
-#[cfg(feature = "layout")]
-#[unsafe(no_mangle)]
-pub extern "C" fn Timer_set_custom_comparisons(this: &mut Timer, layout: &Layout) -> Json {
-    let left_out = this.set_custom_comparisons(layout.custom_comparisons());
-    output_vec(|o| {
-        serde_json::to_writer(o, &left_out).unwrap();
-    })
-}
-
-/// Removes all the custom comparisons installed on the run. If the current
-/// comparison no longer exists, the timer switches to the Personal Best.
-#[unsafe(no_mangle)]
-pub extern "C" fn Timer_remove_custom_comparisons(this: &mut Timer) {
-    this.set_custom_comparisons(Default::default());
 }
 
 /// Accesses the index of the split the attempt is currently on. If there's

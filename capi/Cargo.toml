@@ -43,16 +43,15 @@ default-api = [
 parsing = ["parse-run-result"]
 run-saving = ["run"]
 timing = ["timer"]
-run-editing = ["fuzzy-list", "run-editor", "sum-of-best-cleaner"]
+run-editing = ["custom-comparisons-editor", "fuzzy-list", "run-editor", "sum-of-best-cleaner"]
 layouts = ["components", "layout"]
-layout-editing = ["custom-comparisons-editor", "layout-editor"]
+layout-editing = ["layout-editor"]
 hotkeys = ["hotkey-system"]
 components = [
     "blank-space-component",
     "carousel-component",
     "current-comparison-component",
     "current-pace-component",
-    "custom-comparisons-component",
     "delta-component",
     "detailed-timer-component",
     "graph-component",
@@ -80,11 +79,11 @@ blank-space-component-state = []
 carousel-component = ["carousel-component-state", "component"]
 carousel-component-state = []
 command-sink = []
+comparison-plugin = ["timer"]
 component = []
 current-comparison-component = ["component", "key-value-component-state", "lang", "timer"]
 current-pace-component = ["component", "key-value-component-state", "lang", "timer"]
-custom-comparisons-component = ["component"]
-custom-comparisons-editor = ["layout-editor", "run"]
+custom-comparisons-editor = ["run"]
 delta-component = ["component", "key-value-component-state", "lang", "timer"]
 detailed-timer-component = ["component", "detailed-timer-component-state", "lang", "timer"]
 detailed-timer-component-state = []
@@ -179,6 +178,8 @@ image-shrinking = ["livesplit-core/image-shrinking"]
 software-rendering = ["image-cache", "layout-state", "livesplit-core/software-rendering"]
 wasm-web = ["livesplit-core/wasm-web", "wasm-bindgen", "wasm-bindgen-futures", "web-sys"]
 auto-splitting = ["shared-timer", "livesplit-core/auto-splitting"]
+comparison-plugins = ["comparison-plugin", "livesplit-core/comparison-plugins"]
+web-comparison-plugins = ["comparison-plugin", "wasm-web", "livesplit-core/web-comparison-plugins"]
 assume-str-parameters-are-utf8 = []
 web-command-sink = ["command-sink", "wasm-web"]
 server-protocol = ["command-sink", "wasm-web"]

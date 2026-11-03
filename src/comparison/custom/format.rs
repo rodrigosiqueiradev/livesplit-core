@@ -1,29 +1,27 @@
 //! Reads and writes the custom comparison file format.
 //!
-//! This is the same versioned JSON format the desktop LiveSplit component
-//! uses, so a comparison can be shared between both:
+//! A custom comparison is stored, exported and shared as a small versioned
+//! JSON document:
 //!
 //! ```json
 //! {
 //!   "format": "livesplit-custom-comparison",
 //!   "version": 1,
 //!   "name": "Safe Pace",
-//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } },
-//!   "workspace": { ... }
+//!   "root": { "type": "fallback", "primary": { ... }, "fallback": { ... } }
 //! }
 //! ```
 //!
 //! A file is pure data: it can only describe blocks from the fixed set in
-//! [`ast`](super::ast). `workspace` is the desktop block editor's own layout
-//! and is only kept so the file can be opened there again as it was; it is
-//! never evaluated.
+//! [`ast`](super::ast). Other members are ignored.
 //!
-//! Files are written with the *lowest* version that can hold their blocks, so
-//! comparisons that don't use newer blocks still open in older releases. Every
-//! value is validated while reading, and every error names the place it
+//! The version lets a later release add blocks or change the format: a file
+//! with a newer version than this build understands is refused with a message
+//! asking the runner to update, instead of being misread. Every value is
+//! validated while reading, and every error names the place it
 //! happened, like `root.source.count: must be a whole number from 1 to 10000.`,
 //! because these messages are shown to runners who are editing or importing a
-//! comparison. They match the desktop component's messages word for word.
+//! comparison.
 
 use super::ast::{
     AggregateKind, NANOS_PER_SECOND, Nanos, PickKind, Program, RangeCase, Samples, Times,
@@ -35,11 +33,9 @@ use serde_json::{Map, Value};
 /// The `format` value that identifies a custom comparison file.
 pub const FORMAT_ID: &str = "livesplit-custom-comparison";
 
-/// The newest format version this build understands. Version 2 added
-/// percentile, recentDays, stretchToTotal, blend and pick. Version 3 added
-/// trimOutliers, finishedUnder, atLeast and attempt. Version 4 added
-/// reachedSegment, weightedAverage, clamp, round and bestRecentRun.
-pub const CURRENT_VERSION: u32 = 4;
+/// The newest format version this build understands, which is also the
+/// version every file is written with.
+pub const CURRENT_VERSION: u32 = 1;
 
 /// The longest allowed comparison name, in characters.
 pub const MAX_NAME_LENGTH: usize = 64;
@@ -62,16 +58,6 @@ pub const MAX_SCALE_PERCENT: f64 = 1000.0;
 /// The largest share the trim block may drop from each end.
 pub const MAX_TRIM_PERCENT: f64 = 45.0;
 
-/// A program plus the desktop editor's layout that belongs to it.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Document {
-    /// The comparison.
-    pub program: Program,
-    /// The desktop block editor's layout (block positions and so on). Kept
-    /// as is, never evaluated. `None` for files without one.
-    pub workspace: Option<Value>,
-}
-
 /// A file that can't be read. The message is meant for the runner.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatError(pub String);
@@ -88,29 +74,23 @@ type Result<T> = core::result::Result<T, FormatError>;
 
 // ------------------------------------------------------------------ Writing
 
-/// Writes a document as indented JSON, the way files are exported.
-pub fn write(document: &Document) -> String {
-    serde_json::to_string_pretty(&to_value(document)).expect("A JSON value can always be written")
+/// Writes a comparison as indented JSON, the way files are exported.
+pub fn write(program: &Program) -> String {
+    serde_json::to_string_pretty(&to_value(program)).expect("A JSON value can always be written")
 }
 
-/// Writes a document as JSON on a single line, the way comparisons are stored
-/// in a layout and copied to the clipboard, so chat apps don't mangle them.
-pub fn write_compact(document: &Document) -> String {
-    serde_json::to_string(&to_value(document)).expect("A JSON value can always be written")
+/// Writes a comparison as JSON on a single line, the way comparisons are
+/// stored and copied to the clipboard, so chat apps don't mangle them.
+pub fn write_compact(program: &Program) -> String {
+    serde_json::to_string(&to_value(program)).expect("A JSON value can always be written")
 }
 
-fn to_value(document: &Document) -> Value {
+fn to_value(program: &Program) -> Value {
     let mut root = Map::new();
     root.insert("format".into(), FORMAT_ID.into());
-    root.insert(
-        "version".into(),
-        required_version(&document.program.root).into(),
-    );
-    root.insert("name".into(), document.program.name.as_str().into());
-    root.insert("root".into(), write_times(&document.program.root));
-    if let Some(workspace) = &document.workspace {
-        root.insert("workspace".into(), workspace.clone());
-    }
+    root.insert("version".into(), CURRENT_VERSION.into());
+    root.insert("name".into(), program.name.as_str().into());
+    root.insert("root".into(), write_times(&program.root));
     Value::Object(root)
 }
 
@@ -120,7 +100,7 @@ fn typed(type_name: &str) -> Map<String, Value> {
     map
 }
 
-/// Seconds, rounded to milliseconds like the desktop component writes them.
+/// Seconds, rounded to milliseconds.
 fn seconds(nanos: Nanos) -> Value {
     let millis = libm::round(nanos as f64 / 1_000_000.0);
     number(millis / 1000.0)
@@ -292,54 +272,10 @@ const fn kind_name(kind: AggregateKind) -> &'static str {
     }
 }
 
-/// The lowest format version that can hold every block in the tree.
-pub fn required_version(node: &Times) -> u32 {
-    match node {
-        Times::Comparison { .. } => 1,
-        Times::Attempt { .. } => 3,
-        Times::BestRecentRun { .. } => 4,
-        Times::Aggregate { source, .. } => samples_version(source),
-        Times::Percentile { source, .. } => samples_version(source).max(2),
-        Times::WeightedAverage { source, .. } => samples_version(source).max(4),
-        Times::AddTime { source, .. } | Times::Scale { source, .. } => required_version(source),
-        Times::StretchToTotal { source, .. } => required_version(source).max(2),
-        Times::Round { source, .. } => required_version(source).max(4),
-        Times::Blend { from, to, .. } => required_version(from).max(required_version(to)).max(2),
-        Times::Pick { first, second, .. } => {
-            required_version(first).max(required_version(second)).max(2)
-        }
-        Times::Clamp { source, low, high } => required_version(source)
-            .max(required_version(low))
-            .max(required_version(high))
-            .max(4),
-        Times::Fallback { primary, fallback } => {
-            required_version(primary).max(required_version(fallback))
-        }
-        Times::SegmentRange { cases, otherwise } => cases
-            .iter()
-            .map(|c| required_version(&c.times))
-            .fold(required_version(otherwise), u32::max),
-    }
-}
-
-fn samples_version(node: &Samples) -> u32 {
-    match node {
-        Samples::SegmentHistory => 1,
-        Samples::LastN { source, .. } | Samples::CompletedRunsOnly { source } => {
-            samples_version(source)
-        }
-        Samples::RecentDays { source, .. } => samples_version(source).max(2),
-        Samples::TrimOutliers { source, .. }
-        | Samples::FinishedUnder { source, .. }
-        | Samples::AtLeast { source, .. } => samples_version(source).max(3),
-        Samples::ReachedSegment { source, .. } => samples_version(source).max(4),
-    }
-}
-
 // ------------------------------------------------------------------ Reading
 
 /// Reads a comparison file. Errors are meant for the runner.
-pub fn read(text: &str) -> Result<Document> {
+pub fn read(text: &str) -> Result<Program> {
     let json: Value = serde_json::from_str(text)
         .map_err(|e| FormatError(format!("This isn't valid JSON: {e}")))?;
 
@@ -367,12 +303,10 @@ pub fn read(text: &str) -> Result<Document> {
         )));
     }
 
-    let program = Program {
+    Ok(Program {
         name: name.trim().to_string(),
         root: read_times(required(root, "root", "")?, "root")?,
-    };
-    let workspace = root.get("workspace").filter(|w| !w.is_null()).cloned();
-    Ok(Document { program, workspace })
+    })
 }
 
 const LIST_TYPES: &[&str] = &[
@@ -652,8 +586,7 @@ fn error(path: &str, key: &str, problem: &str) -> FormatError {
     FormatError(format!("{}: {problem}.", join(path, key)))
 }
 
-/// Formats a limit like the desktop component: up to three decimals, no
-/// trailing zeros.
+/// Formats a limit with up to three decimals and no trailing zeros.
 fn fmt_number(value: f64) -> String {
     let text = format!("{value:.3}");
     let text = text.trim_end_matches('0').trim_end_matches('.');

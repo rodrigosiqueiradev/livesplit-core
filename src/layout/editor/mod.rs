@@ -583,37 +583,6 @@ impl Editor {
         self.component_at_path_mut(&path).set_value(index, value);
     }
 
-    /// The custom comparisons stored in the selected component, if it's a
-    /// Custom Comparisons component. Edit them with a
-    /// [`custom::Editor`](crate::comparison::custom::Editor) and store them
-    /// again with
-    /// [`set_custom_comparisons`](Self::set_custom_comparisons).
-    pub fn custom_comparisons(&self) -> Option<&[String]> {
-        if self.selected_entry().is_placeholder {
-            return None;
-        }
-        match self.component_at_path(&self.selected_entry().path) {
-            Component::CustomComparisons(component) => Some(&component.settings().comparisons),
-            _ => None,
-        }
-    }
-
-    /// Stores the custom comparisons in the selected component, if it's a
-    /// Custom Comparisons component. Returns whether they were stored.
-    pub fn set_custom_comparisons(&mut self, comparisons: Vec<String>) -> bool {
-        if self.selected_entry().is_placeholder {
-            return false;
-        }
-        let path = self.selected_entry().path.clone();
-        match self.component_at_path_mut(&path) {
-            Component::CustomComparisons(component) => {
-                component.settings_mut().comparisons = comparisons;
-                true
-            }
-            _ => false,
-        }
-    }
-
     /// Sets a setting's value of the general settings by its setting index to
     /// the given value.
     ///

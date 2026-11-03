@@ -1,0 +1,18 @@
+[package]
+name = "livesplit-custom-comparisons-plugin"
+version = "0.1.0"
+authors = ["Rodrigo Siqueira <20211378+rodrigosiqueiradev@users.noreply.github.com>"]
+repository = "https://github.com/LiveSplit/livesplit-core/tree/master/crates/livesplit-custom-comparisons-plugin"
+license = "MIT OR Apache-2.0"
+description = "The Custom Comparisons comparison plugin: comparisons the runner builds out of blocks."
+edition = "2024"
+rust-version = "1.97"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+livesplit-core = { path = "../..", default-features = false }
+serde = { version = "1.0.186", default-features = false, features = ["alloc"] }
+serde_json = { version = "1.0.60", default-features = false, features = ["alloc"] }

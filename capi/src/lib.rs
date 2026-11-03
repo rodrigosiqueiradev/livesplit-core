@@ -43,14 +43,14 @@ pub mod carousel_component;
 pub mod carousel_component_state;
 #[cfg(feature = "command-sink")]
 pub mod command_sink;
+#[cfg(feature = "comparison-plugin")]
+pub mod comparison_plugin;
 #[cfg(feature = "component")]
 pub mod component;
 #[cfg(feature = "current-comparison-component")]
 pub mod current_comparison_component;
 #[cfg(feature = "current-pace-component")]
 pub mod current_pace_component;
-#[cfg(feature = "custom-comparisons-component")]
-pub mod custom_comparisons_component;
 #[cfg(feature = "custom-comparisons-editor")]
 pub mod custom_comparisons_editor;
 #[cfg(feature = "delta-component")]
