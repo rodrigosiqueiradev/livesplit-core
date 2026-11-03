@@ -1,8 +1,8 @@
-//! The editor for the list of custom comparisons stored in a layout.
+//! The editor for the list of custom comparisons in the settings of the
+//! Custom Comparisons plugin.
 //!
-//! The comparisons are stored as text (see
-//! [`custom_comparisons::Settings`](crate::component::custom_comparisons::Settings)),
-//! so that one that can't be read, for example because it was made with a
+//! The comparisons are stored as text (see [`settings`](super::settings)), so
+//! that one that can't be read, for example because it was made with a
 //! newer version, is never lost. The [`Editor`] manages that list with the
 //! same rules as the settings of the desktop LiveSplit component *Custom
 //! Comparisons*:

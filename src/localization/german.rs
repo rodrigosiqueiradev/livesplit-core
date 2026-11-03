@@ -733,7 +733,6 @@ pub const fn resolve(text: Text) -> &'static str {
         Text::ComponentBlankSpace => "Leerraum",
         Text::ComponentCurrentComparison => "Aktueller Vergleich",
         Text::ComponentCurrentPace => "Aktuelles Tempo",
-        Text::ComponentCustomComparisons => "Benutzerdefinierte Vergleiche",
         Text::ComponentDelta => "Delta",
         Text::ComponentDetailedTimer => "Detaillierter Timer",
         Text::ComponentGraph => "Graph",

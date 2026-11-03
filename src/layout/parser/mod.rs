@@ -43,6 +43,8 @@ mod total_playtime;
 #[cfg(all(windows, feature = "std"))]
 mod font_resolving;
 
+pub use self::custom_comparisons::custom_comparisons_settings;
+
 // One single row component is:
 // 1.0 units high in component space.
 // 24 pixels high in LiveSplit One's pixel coordinate space.
@@ -675,9 +677,6 @@ where
                         current_comparison::Component::new().into()
                     }
                     "LiveSplit.RunPrediction.dll" => current_pace::Component::new().into(),
-                    "LiveSplit.CustomComparisons.dll" => {
-                        custom_comparisons::Component::new().into()
-                    }
                     "LiveSplit.Delta.dll" => delta::Component::new().into(),
                     "LiveSplit.DetailedTimer.dll" => {
                         Box::new(detailed_timer::Component::new()).into()
@@ -707,7 +706,6 @@ where
                         Component::BlankSpace(c) => blank_space::settings(reader, c),
                         Component::CurrentComparison(c) => current_comparison::settings(reader, c),
                         Component::CurrentPace(c) => current_pace::settings(reader, c),
-                        Component::CustomComparisons(c) => custom_comparisons::settings(reader, c),
                         Component::Delta(c) => delta::settings(reader, c),
                         Component::DetailedTimer(c) => detailed_timer::settings(reader, c),
                         Component::Graph(c) => graph::settings(reader, c),

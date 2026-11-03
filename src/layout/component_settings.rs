@@ -1,9 +1,9 @@
 use super::Component;
 use crate::{
     component::{
-        blank_space, carousel, current_comparison, current_pace, custom_comparisons, delta,
-        detailed_timer, graph, group, pb_chance, possible_time_save, previous_segment,
-        segment_time, separator, splits, sum_of_best, text, timer, title, total_playtime,
+        blank_space, carousel, current_comparison, current_pace, delta, detailed_timer, graph,
+        group, pb_chance, possible_time_save, previous_segment, segment_time, separator, splits,
+        sum_of_best, text, timer, title, total_playtime,
     },
     platform::prelude::*,
 };
@@ -18,8 +18,6 @@ pub enum ComponentSettings {
     CurrentComparison(current_comparison::Settings),
     /// The Settings for the Current Pace Component.
     CurrentPace(current_pace::Settings),
-    /// The Settings for the Custom Comparisons Component.
-    CustomComparisons(custom_comparisons::Settings),
     /// The Settings for the Delta Component.
     Delta(delta::Settings),
     /// The Settings for the Detailed Timer Component.
@@ -65,9 +63,6 @@ impl From<ComponentSettings> for Component {
             }
             ComponentSettings::CurrentPace(settings) => {
                 Component::CurrentPace(current_pace::Component::with_settings(settings))
-            }
-            ComponentSettings::CustomComparisons(settings) => {
-                Component::CustomComparisons(custom_comparisons::Component::with_settings(settings))
             }
             ComponentSettings::Delta(settings) => {
                 Component::Delta(delta::Component::with_settings(settings))
